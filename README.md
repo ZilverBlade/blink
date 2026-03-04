@@ -67,7 +67,8 @@ zero: 0
 
 # A subroutine that accepts arguments and increments a number by 1
 inc:
-  # declare expected arguments using the special `args` statement. This must be declared in the top of the subroutine!
+  # declare expected arguments using the special `args` statement.
+  # This must be declared in the top of the subroutine!
   - args: [x]
   # evaluates, and returns the value (since it's the last statement)
   - std.add: [x, 1]
@@ -105,7 +106,8 @@ main:
 - num: 5
 
 # Unit 2: main.bk.yaml
-# Operates independently in its own execution environment. Since `num` is not declared here, there will be an InterpError
+# Operates independently in its own execution environment.
+# Since `num` is not declared here, a `UndeclaredSubException` will be thrown
 main:
   - std.writeout: ["Running isolated unit", num]
 ```
@@ -121,6 +123,8 @@ foo:
 main:
   # declaring x and setting it to 2 (dynamically scoping x)
   - x: 2
+  # "x = 2" will be outputted!
+  - foo: []
 ```
 
 ### Dynamic type system and coercion:
@@ -219,7 +223,8 @@ main:
   - code:
     - std.ex.getcod: [error_obj]
   - value:
-  # Unboxing as an integer, if the exception has been thrown, this will return 0 (As seen in the type coercion)
+  # Unboxing as an integer, if the exception has been thrown,
+  # this will return 0 (As seen in the type coercion)
     - std.ex.unboxi: [error_obj]
     
   # Printing the caught exception message
