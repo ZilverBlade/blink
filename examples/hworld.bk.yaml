@@ -79,3 +79,4 @@ main:
   - x:
     - inc: [x]
   - std.print: ["Hello %i!", x]
+  - True

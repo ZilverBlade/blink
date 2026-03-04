@@ -1,0 +1,29 @@
+# these should all be variables inside a subroutine called "init"
+init:
+  - u: unknown
+  - b1: True
+  - b2: Yes
+  - b3: On
+  
+  - c1: false
+  - c2: no
+  - c3: off
+
+  - i1: 42
+  - f1: 3.1415926
+  - cstr: "Hello"
+  - cstr2: '10'
+  - cpy: b1
+  - cpy2: cpy
+
+# subroutine that returns 0
+zero:
+  - 0
+
+# main
+main:
+  # variable called foo
+  - foo:
+    # calling a subroutine with 0 arguments, and acquiring its value
+    - zero: []
+    

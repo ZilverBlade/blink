@@ -60,9 +60,9 @@ struct bk_managed_value_t* bk_internal_box_managed_value(const bk_object inData,
 
 #define bk_internal_box_type(v, type) bk_internal_box_managed_value(&v, sizeof(v), type)
 
-void bk_internal_unbox_managed_value(struct bk_managed_value_t** pManagedValue, bk_object outData) {
+void bk_internal_unbox_managed_value(struct bk_managed_value_t* managedValue, bk_object outData) {
     bk_integer size = 0;
-    switch ((*pManagedValue)->type) {
+    switch (managedValue->type) {
     case BK_TYPE_UNKNOWN:
         size = 0;
         break;
@@ -80,29 +80,31 @@ void bk_internal_unbox_managed_value(struct bk_managed_value_t** pManagedValue, 
         size = sizeof(bk_string);
         break;
     }
+    memcpy(outData, managedValue->data, size);
+}
 
-    memcpy(outData, (*pManagedValue)->data, size);
 
-    DELETE(*pManagedValue);
-    *pManagedValue = NULL;
+void bk_internal_destroy_managed_value(struct bk_managed_value_t* managedValue) {
+    DELETE(managedValue->data);
+    DELETE(managedValue);
 }
 
 struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
-    if (!value || value[0] == '\0' || strcmp(value, "unknown")) {
+    if (!value || value[0] == '\0' || strcmp(value, "unknown") == 0) {
         return bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
     }
     {
         char* ptr = NULL;
-        bk_integer num = strtol(value, &ptr, 10);
+        double num = strtod(value, &ptr);
         if (errno != ERANGE && ptr > value) {
-            return bk_internal_box_type(num, BK_TYPE_INTEGER);
-        }
-    }
-    {
-        char* ptr = NULL;
-        float num = strtof(value, &ptr);
-        if (errno != ERANGE && ptr > value) {
-            return bk_internal_box_type(num, BK_TYPE_DECIMAL);
+            if (num != (double)(long)num) {
+                bk_decimal v = (bk_decimal)num;
+                return bk_internal_box_type(v, BK_TYPE_DECIMAL);
+            }
+            else {
+                bk_integer v = (bk_integer)num;
+                return bk_internal_box_type(v, BK_TYPE_INTEGER);
+            }
         }
     }
     {
@@ -114,7 +116,7 @@ struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
 
         for (char* b = trimmed; *b != '\0'; ++b) {
             if (*b >= 'A' && *b <= 'Z') {
-                *b -= 'a' - 'A';
+                *b += 'a' - 'A';
             }
         }
 
@@ -123,6 +125,7 @@ struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
         if (strcmp(trimmed, "y") == 0 || strcmp(trimmed, "yes") == 0 ||
             strcmp(trimmed, "true") == 0 || strcmp(trimmed, "on") == 0) {
             bool = BK_TRUE;
+            exists = BK_TRUE;
         }
         else if (strcmp(trimmed, "n") == 0 || strcmp(trimmed, "no") == 0 ||
             strcmp(trimmed, "false") == 0 || strcmp(trimmed, "off") == 0) {
@@ -255,7 +258,7 @@ bk_result bk_reset_execution_engine_state(bk_engine engine) {
     return BK_SUCCESS;
 }
 
-bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult) {
+bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult) {
     yaml_event_t event;
 
     yaml_parser_set_input_file(&machine->parser, pStream->pFile);
@@ -269,16 +272,25 @@ bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_
 
     bk_boolean done = BK_FALSE;
     bk_result result = BK_SUCCESS;
+    bk_integer nestingLevel = 0;
+
 
     /* Read the event sequence. */
     while (!done) {
         /* Get the next event. */
         if (!yaml_parser_parse(&machine->parser, &event)) {
-            if (machine->parser.error == YAML_PARSER_ERROR) {
+            if (machine->parser.error == YAML_PARSER_ERROR || machine->parser.error == YAML_SCANNER_ERROR) {
+                snprintf(machine->lastErrorBuf, machine->lastErrorBufLen,
+                    "Parser error (%d) at Line %zu Col %zu: %s",
+                    machine->parser.problem_value, machine->parser.problem_mark.line, machine->parser.problem_mark.column,
+                    machine->parser.problem);
                 result = BK_PARSER_ERROR;
                 goto error;
             }
-            if (machine->parser.error == YAML_READER_ERROR || machine->parser.error == YAML_SCANNER_ERROR) {
+            if (machine->parser.error == YAML_READER_ERROR) {
+                snprintf(machine->lastErrorBuf, machine->lastErrorBufLen,
+                    "IO error (%d): %s",
+                    machine->parser.problem_value, machine->parser.problem);
                 result = BK_IO_ERROR;
                 goto error;
             }
@@ -303,10 +315,12 @@ bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_
         case YAML_MAPPING_START_EVENT:
             token.type = BK_TOKEN_IN_START;
             nextSequenceReady = BK_TRUE;
+            ++nestingLevel;
             break;
         case YAML_MAPPING_END_EVENT:
             token.type = BK_TOKEN_IN_END;
             nextSequenceReady = BK_FALSE;
+            --nestingLevel;
             break;
         case YAML_SEQUENCE_START_EVENT:
             token.type = BK_TOKEN_LIST_START;
@@ -329,8 +343,16 @@ bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_
             }
             if (strcmp(event.data.scalar.value, BK_KEYWORD_IMPORT) == 0) {
                 token.type = BK_TOKEN_DECL_IMPORT;
+                nextSequenceReady = BK_FALSE;
             }
             else if (strcmp(event.data.scalar.value, BK_KEYWORD_ARGS) == 0) {
+                if (nestingLevel != 2) {
+                    snprintf(machine->lastErrorBuf, machine->lastErrorBufLen,
+                        "Interpreter error on Line %zu-%zu Col %zu-%zu: Argument provider defined in an invalid subroutine",
+                        event.start_mark.line, event.end_mark.line, event.start_mark.column, event.end_mark.column);
+                    result = BK_INTERP_ERROR;
+                    goto error;
+                }
                 token.type = BK_TOKEN_DECL_ARGS;
                 token.data.var.name = calloc(event.data.scalar.length + 1, sizeof(char));
                 strncpy(token.data.var.name, event.data.scalar.value, event.data.scalar.length);
@@ -344,9 +366,18 @@ bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_
                 token.type = BK_TOKEN_USE_LIT;
                 token.data.lit.value = bk_internal_parse_as_managed_value(event.data.scalar.value);
                 if (!token.data.lit.value) {
-                    // must be variable name
-                    token.type = BK_TOKEN_USE_VAR;
-                    token.data.var.name = bk_internal_clone_string(event.data.scalar.value);
+                    // subroutines are declared in the root scope
+                    if (nestingLevel == 1) {
+                        token.type = BK_TOKEN_DECL_SUB;
+                        token.data.var.name = bk_internal_clone_string(event.data.scalar.value);
+                        nextSequenceReady = BK_FALSE;
+                    }
+                    else {
+                        // must be variable name
+                        token.type = nextSequenceReady ? BK_TOKEN_DECL_VAR : BK_TOKEN_USE_VAR;
+                        token.data.var.name = bk_internal_clone_string(event.data.scalar.value);
+                        nextSequenceReady = BK_FALSE;
+                    }
                 }
             }
 
@@ -373,7 +404,7 @@ error:
     return result;
 }
 
-bk_result bk_decompile_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen) {
+bk_result bk_emit_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen) {
     if (unit == NULL || pBufLen == NULL) {
         return BK_NULL_FAILURE;
     }
@@ -420,6 +451,9 @@ bk_result bk_decompile_translation_unit(bk_unit unit, char* outBuf, bk_integer* 
             case BK_TYPE_STRING:
                 length += snprintf(ADJ_BUF(), remaining, ", [\"%s\"]", token->data.lit.value->data);
                 break;
+            case BK_TYPE_BOOLEAN:
+                length += snprintf(ADJ_BUF(), remaining, ", [%s]", *(bk_boolean*)token->data.lit.value->data ? "true" : "false");
+                break;
             case BK_TYPE_INTEGER:
                 length += snprintf(ADJ_BUF(), remaining, ", [%i]", *(bk_integer*)token->data.lit.value->data);
                 break;
@@ -444,6 +478,32 @@ bk_result bk_decompile_translation_unit(bk_unit unit, char* outBuf, bk_integer* 
         *pBufLen = length;
     }
     return BK_SUCCESS;
+}
+
+void bk_release_translation_unit(bk_unit unit) {
+    if (unit == NULL) return;
+    if (unit->tokens != NULL) {
+        for (bk_integer i = 0; i < unit->tokens->length; ++i) {
+            struct bk_token_t* token = (struct bk_token_t*)unit->tokens->data + i;
+            switch (token->type) {
+            case BK_TOKEN_DECL_VAR:
+            case BK_TOKEN_USE_VAR:
+                DELETE(token->data.var.name);
+                break;
+            case BK_TOKEN_DECL_SUB:
+            case BK_TOKEN_USE_SUB:
+                DELETE(token->data.sub.name);
+                break;
+            case BK_TOKEN_USE_LIT:
+                bk_internal_destroy_managed_value(token->data.lit.value);
+                break;
+            default:
+                break;
+            }
+        }
+        bk_internal_destroy_list(unit->tokens);
+    }
+    DELETE(unit);
 }
 
 bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits) {

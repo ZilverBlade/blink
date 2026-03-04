@@ -12,7 +12,9 @@
 
 int main(int argc, char** argv, char** env) {
     /* Set a file input. */
-    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
+    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
+    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test.bk.yaml", "rb");
+    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/invalid-sub.bk.yaml", "rb");
 
 #if 0
     yaml_parser_t parser;
@@ -108,21 +110,22 @@ int main(int argc, char** argv, char** env) {
         .pFile = input
     };
     bk_unit main;
-    if (bk_create_translation_unit(machine, &stream, &main) != BK_SUCCESS) {
+    if (bk_compile_translation_unit(machine, &stream, &main) != BK_SUCCESS) {
+        printf("ERROR: %s\n", bk_get_interpreter_error(machine));
         return EXIT_FAILURE;
     }
 
     bk_integer len = 0;
-    if (bk_decompile_translation_unit(main, NULL, &len) != BK_SUCCESS) {
+    if (bk_emit_translation_unit(main, NULL, &len) != BK_SUCCESS) {
         return EXIT_FAILURE;
     }
     char* outputBuff = calloc(len + 1, 1);
-    if (bk_decompile_translation_unit(main, outputBuff, &len) != BK_SUCCESS) {
+    if (bk_emit_translation_unit(main, outputBuff, &len) != BK_SUCCESS) {
         return EXIT_FAILURE;
     }
     printf("%s\n", outputBuff);
 
-    //bk_destroy_translation_unit(main);
+    bk_release_translation_unit(main);
     bk_destroy_interpreter(machine);
 #endif
 
