@@ -65,9 +65,11 @@ extern "C" {
     BK_API bk_result bk_set_execution_engine_io(bk_engine engine, FILE* input, FILE* output);
     BK_API bk_result bk_reset_execution_engine_state(bk_engine engine);
 
-    BK_API bk_result bk_create_translation_unit(bk_machine machine, const bk_stream* pStream, bk_unit* pResult);
+    BK_API bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult);
 
-    BK_API bk_result bk_interpret(bk_engine engine, const bk_unit pUnits, bk_integer numUnits);
+    BK_API bk_result bk_decompile_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen);
+
+    BK_API bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits);
 
 #ifdef __cplusplus
 }

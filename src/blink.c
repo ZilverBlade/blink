@@ -3,11 +3,18 @@
 #include "yaml/yaml.h"
 
 #define NEW(type) malloc(sizeof(type)); 
-#define DELETE(data) free((void*)(data))
-#define CLEAR(data) memset((void*)(data), 0, sizeof(*data))
+#define DELETE(data) free((data))
+#define CLEAR(data) memset(data, 0, sizeof(*data))
 
 #define BK_KEYWORD_IMPORT "import"
 #define BK_KEYWORD_ARGS "args"
+
+char* bk_internal_clone_string(bk_string str) {
+    bk_integer len = strlen(str);
+    char* new = calloc(len + 1, sizeof(char));
+    strncpy(new, str, len);
+    return new;
+}
 
 struct bk_dynamic_list_t {
     void* data;
@@ -17,6 +24,7 @@ struct bk_dynamic_list_t {
 };
 struct bk_dynamic_list_t* bk_internal_create_list(int elementSize, int initialCapacity) {
     struct bk_dynamic_list_t* list = NEW(struct bk_dynamic_list_t);
+    CLEAR(list);
     list->data = calloc(initialCapacity, elementSize);
     list->elementSize = elementSize;
     list->capacity = initialCapacity;
@@ -30,7 +38,7 @@ void bk_internal_destroy_list(struct bk_dynamic_list_t* list) {
 void bk_internal_list_append(struct bk_dynamic_list_t* list, const void* val) {
     if (list->length == list->capacity) {
         list->capacity *= 2;
-        list->data = realloc(list->data, list->capacity);
+        list->data = realloc(list->data, list->capacity * list->elementSize);
     }
     memcpy((char*)list->data + list->length++ * list->elementSize, val, list->elementSize);
 }
@@ -45,7 +53,7 @@ struct bk_managed_value_t* bk_internal_box_managed_value(const bk_object inData,
     struct bk_managed_value_t* ret = NEW(struct bk_managed_value_t);
     CLEAR(ret);
     ret->type = type;
-    ret->data = malloc(size);
+    ret->data = size == 0 ? NULL : malloc(size);
     memcpy(ret->data, inData, size);
     return ret;
 }
@@ -80,6 +88,9 @@ void bk_internal_unbox_managed_value(struct bk_managed_value_t** pManagedValue, 
 }
 
 struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
+    if (!value || value[0] == '\0' || strcmp(value, "unknown")) {
+        return bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
+    }
     {
         char* ptr = NULL;
         bk_integer num = strtol(value, &ptr, 10);
@@ -89,11 +100,42 @@ struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
     }
     {
         char* ptr = NULL;
-        float num = strtof(value, &ptr, 10);
+        float num = strtof(value, &ptr);
         if (errno != ERANGE && ptr > value) {
             return bk_internal_box_type(num, BK_TYPE_DECIMAL);
         }
     }
+    {
+        char* copy = bk_internal_clone_string(value);
+        char* trimmed = copy;
+        while (trimmed[0] == ' ') {
+            ++trimmed;
+        }
+
+        for (char* b = trimmed; *b != '\0'; ++b) {
+            if (*b >= 'A' && *b <= 'Z') {
+                *b -= 'a' - 'A';
+            }
+        }
+
+        bk_boolean bool;
+        bk_boolean exists = BK_FALSE;
+        if (strcmp(trimmed, "y") == 0 || strcmp(trimmed, "yes") == 0 ||
+            strcmp(trimmed, "true") == 0 || strcmp(trimmed, "on") == 0) {
+            bool = BK_TRUE;
+        }
+        else if (strcmp(trimmed, "n") == 0 || strcmp(trimmed, "no") == 0 ||
+            strcmp(trimmed, "false") == 0 || strcmp(trimmed, "off") == 0) {
+            bool = BK_FALSE;
+            exists = BK_TRUE;
+        }
+        DELETE(copy);
+        if (exists) {
+            return bk_internal_box_type(bool, BK_TYPE_BOOLEAN);
+        }
+    }
+
+    return NULL;
 }
 
 enum bk_token_type_t {
@@ -129,11 +171,10 @@ struct bk_token_t {
     enum bk_token_type_t type;
     union bk_token_data_t {
         struct bk_token_data_sub_t {
-            bk_string name;
+            char* name;
         } sub;
         struct bk_token_data_var_t {
-            bk_string name;
-            struct bk_managed_value_t* value;
+            char* name;
         } var;
         struct bk_token_data_lit_t {
             struct bk_managed_value_t* value;
@@ -172,7 +213,7 @@ bk_result bk_create_interpreter(bk_machine* pResult) {
     if (!yaml_parser_initialize(&parser)) {
         return BK_INIT_FAILURE;
     }
-    *pResult = NEW(bk_machine);
+    *pResult = NEW(struct bk_machine_t);
     (*pResult)->parser = parser;
     (*pResult)->lastErrorBufLen = 1024;
     (*pResult)->lastErrorBuf = calloc((*pResult)->lastErrorBufLen, sizeof(char));
@@ -194,8 +235,8 @@ bk_string bk_get_interpreter_error(bk_machine machine) {
 }
 
 bk_result bk_create_execution_engine(bk_engine* pResult) {
-    *pResult = NEW(bk_engine);
-    CLEAR(*pResult);
+    *pResult = NEW(struct bk_engine_t);
+    CLEAR(pResult);
     return BK_SUCCESS;
 }
 
@@ -214,13 +255,12 @@ bk_result bk_reset_execution_engine_state(bk_engine engine) {
     return BK_SUCCESS;
 }
 
-bk_result bk_create_translation_unit(bk_machine machine, const bk_stream* pStream, bk_unit* pResult) {
+bk_result bk_create_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult) {
     yaml_event_t event;
 
     yaml_parser_set_input_file(&machine->parser, pStream->pFile);
 
     struct bk_dynamic_list_t* tokens = bk_internal_create_list(sizeof(struct bk_token_t), 64);
-
 
     bk_boolean expectingSequence = BK_FALSE;
     bk_boolean nextSequenceReady = BK_FALSE;
@@ -292,10 +332,22 @@ bk_result bk_create_translation_unit(bk_machine machine, const bk_stream* pStrea
             }
             else if (strcmp(event.data.scalar.value, BK_KEYWORD_ARGS) == 0) {
                 token.type = BK_TOKEN_DECL_ARGS;
+                token.data.var.name = calloc(event.data.scalar.length + 1, sizeof(char));
+                strncpy(token.data.var.name, event.data.scalar.value, event.data.scalar.length);
             }
             else if (event.data.scalar.style == YAML_DOUBLE_QUOTED_SCALAR_STYLE || event.data.scalar.style == YAML_SINGLE_QUOTED_SCALAR_STYLE) {
                 token.type = BK_TOKEN_USE_LIT;
-                token.data.lit.value = event.data.scalar.value;
+                token.data.lit.value = bk_internal_box_managed_value(event.data.scalar.value,
+                    event.data.scalar.length + 1, BK_TYPE_STRING);
+            }
+            else {
+                token.type = BK_TOKEN_USE_LIT;
+                token.data.lit.value = bk_internal_parse_as_managed_value(event.data.scalar.value);
+                if (!token.data.lit.value) {
+                    // must be variable name
+                    token.type = BK_TOKEN_USE_VAR;
+                    token.data.var.name = bk_internal_clone_string(event.data.scalar.value);
+                }
             }
 
             break;
@@ -307,7 +359,12 @@ bk_result bk_create_translation_unit(bk_machine machine, const bk_stream* pStrea
         done = (event.type == YAML_STREAM_END_EVENT);
 
         yaml_event_delete(&event);
+
+        bk_internal_list_append(tokens, &token);
     }
+
+    *pResult = NEW(struct bk_unit_t);
+    (*pResult)->tokens = tokens;
     return BK_SUCCESS;
 
 error:
@@ -316,7 +373,81 @@ error:
     return result;
 }
 
-bk_result bk_interpret(bk_engine engine, const bk_unit pUnits, bk_integer numUnits) {
+bk_result bk_decompile_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen) {
+    if (unit == NULL || pBufLen == NULL) {
+        return BK_NULL_FAILURE;
+    }
 
+    bk_integer length = 0;
+    bk_integer remaining = *pBufLen;
+    for (bk_integer i = 0; i < unit->tokens->length; ++i) {
+#define ADJ_LEN() do if (*pBufLen == 0 || (*pBufLen - length < 0)) remaining = 0; else remaining = *pBufLen - length; while (0)
+#define ADJ_BUF() (outBuf ? (outBuf + length) : NULL)
+        struct bk_token_t* token = (struct bk_token_t*)unit->tokens->data + i;
+        bk_string tokenName = NULL;
+        switch (token->type) {
+        case BK_TOKEN_DECL_IMPORT: tokenName = "DECL_IMPORT"; break;
+        case BK_TOKEN_DECL_SUB: tokenName = "DECL_SUB"; break;
+        case BK_TOKEN_DECL_ARGS: tokenName = "DECL_ARGS"; break;
+        case BK_TOKEN_DECL_VAR: tokenName = "DECL_VAR"; break;
+        case BK_TOKEN_USE_SUB: tokenName = "USE_SUB"; break;
+        case BK_TOKEN_USE_VAR: tokenName = "USE_VAR"; break;
+        case BK_TOKEN_USE_LIT: tokenName = "USE_LIT"; break;
+        case BK_TOKEN_BREAK: tokenName = "BREAK"; break;
+        case BK_TOKEN_IN_START: tokenName = "IN_START"; break;
+        case BK_TOKEN_IN_END: tokenName = "IN_END"; break;
+        case BK_TOKEN_LIST_START: tokenName = "LIST_START"; break;
+        case BK_TOKEN_LIST_END: tokenName = "LIST_END"; break;
+        default:
+            return BK_FAILURE;
+        }
+        length += snprintf(ADJ_BUF(), remaining, "bk_token: %s", tokenName);
+        ADJ_LEN();
+        switch (token->type) {
+        case BK_TOKEN_DECL_VAR:
+        case BK_TOKEN_USE_VAR:
+            length += snprintf(ADJ_BUF(), remaining, ", {%s}", token->data.var.name);
+            break;
+        case BK_TOKEN_DECL_SUB:
+        case BK_TOKEN_USE_SUB:
+            length += snprintf(ADJ_BUF(), remaining, ", (%s)", token->data.sub.name);
+            break;
+        case BK_TOKEN_USE_LIT:
+            switch (token->data.lit.value->type) {
+            case BK_TYPE_OBJECT:
+                length += snprintf(ADJ_BUF(), remaining, ", [%p]", token->data.lit.value->data);
+                break;
+            case BK_TYPE_STRING:
+                length += snprintf(ADJ_BUF(), remaining, ", [\"%s\"]", token->data.lit.value->data);
+                break;
+            case BK_TYPE_INTEGER:
+                length += snprintf(ADJ_BUF(), remaining, ", [%i]", *(bk_integer*)token->data.lit.value->data);
+                break;
+            case BK_TYPE_DECIMAL:
+                length += snprintf(ADJ_BUF(), remaining, ", [%f]", *(bk_decimal*)token->data.lit.value->data);
+                break;
+            case BK_TYPE_UNKNOWN:
+                length += snprintf(ADJ_BUF(), remaining, ", [unknown]");
+                break;
+            default:
+                return BK_FAILURE;
+            }
+        default:
+            break;
+        }
+        ADJ_LEN();
+        length += snprintf(ADJ_BUF(), remaining, "\n");
+        ADJ_LEN();
+#undef ADJ_LEN
+    }
+    if (!outBuf) {
+        *pBufLen = length;
+    }
+    return BK_SUCCESS;
 }
 
+bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits) {
+
+
+    return BK_SUCCESS;
+}

@@ -5,10 +5,16 @@
 
 #include "yaml/yaml.h"
 
+#include "blink.h"
+
 
 #define PRINT(fmt, ...) printf("%s" fmt "\n", indent, __VA_ARGS__)
 
 int main(int argc, char** argv, char** env) {
+    /* Set a file input. */
+    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
+
+#if 0
     yaml_parser_t parser;
     yaml_event_t event;
 
@@ -17,8 +23,6 @@ int main(int argc, char** argv, char** env) {
     /* Create the Parser object. */
     yaml_parser_initialize(&parser);
 
-    /* Set a file input. */
-    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
 
     yaml_parser_set_input_file(&parser, input);
 
@@ -91,6 +95,38 @@ int main(int argc, char** argv, char** env) {
 
     /* Destroy the Parser object. */
     yaml_parser_delete(&parser);
+
+#endif
+
+#if 1
+    bk_machine machine;
+    if (bk_create_interpreter(&machine) != BK_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+   
+    bk_stream stream = {
+        .pFile = input
+    };
+    bk_unit main;
+    if (bk_create_translation_unit(machine, &stream, &main) != BK_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+
+    bk_integer len = 0;
+    if (bk_decompile_translation_unit(main, NULL, &len) != BK_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    char* outputBuff = calloc(len + 1, 1);
+    if (bk_decompile_translation_unit(main, outputBuff, &len) != BK_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    printf("%s\n", outputBuff);
+
+    //bk_destroy_translation_unit(main);
+    bk_destroy_interpreter(machine);
+#endif
+
+    fclose(input);
 
     return EXIT_SUCCESS;
 }
