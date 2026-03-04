@@ -62,7 +62,7 @@ A subroutine can be overridden in definition later on, dynamically as explained 
 # Subconstant that returns 0, identical to a "variable"
 zero:
   - 0
-# This statement is equivilant!
+# This statement is equivalent!
 zero: 0
 
 # A subroutine that accepts arguments and increments a number by 1
@@ -99,7 +99,7 @@ main:
 
 ### Multiple translation units:
 
-👁‍🗨**blink** allows to manipulate multiple translation units, to allow independent executionenvironments to operate, without mutating another, unless explicitly performed by using a subroutine.
+👁‍🗨**blink** allows to manipulate multiple translation units, to allow independent execution environments to operate, without mutating another, unless explicitly performed by using a subroutine.
 
 ```yaml
 # Unit 1: data.bk.yaml
