@@ -35,6 +35,8 @@ extern "C" {
     } bk_result;
 
     typedef enum bk_type_t {
+        BK_TYPE_NONE,
+
         BK_TYPE_UNKNOWN,
 
         BK_TYPE_OBJECT,
@@ -46,6 +48,16 @@ extern "C" {
         BK_TYPE_STRING,
     } bk_type;
 
+
+    typedef enum bk_exception_t {
+        BK_EX_ENGINE_FAILURE = -0x7FFFFFFF,
+        BK_EX_NONE = 0,
+        BK_EX_DIVISIONBYZERO = -2,
+        BK_EX_NOTANUMBER = -3,
+        BK_EX_BADFORMAT = -4,
+        BK_EX_BADIO = -5,
+    } bk_exception;
+
     typedef struct bk_stream_t {
         FILE* pFile;
     } bk_stream;
@@ -53,17 +65,21 @@ extern "C" {
     typedef struct bk_machine_t* bk_machine;
     typedef struct bk_engine_t* bk_engine;
     typedef struct bk_unit_t* bk_unit;
+    typedef struct bk_metadata_t* bk_metadata;
 
     BK_API bk_result bk_create_interpreter(bk_machine* pResult);
     BK_API void bk_destroy_interpreter(bk_machine machine);
 
-    BK_API bk_string bk_get_interpreter_error(bk_machine machine);
+    BK_API bk_string bk_interpreter_get_error(bk_machine machine);
 
     BK_API bk_result bk_create_execution_engine(bk_engine* pResult);
     BK_API void bk_destroy_execution_engine(bk_engine engine);
 
-    BK_API bk_result bk_set_execution_engine_io(bk_engine engine, FILE* input, FILE* output);
-    BK_API bk_result bk_reset_execution_engine_state(bk_engine engine);
+    BK_API bk_result bk_engine_set_io(bk_engine engine, FILE* input, FILE* output);
+    BK_API bk_result bk_engine_get_io(bk_engine engine, FILE** pInput, FILE** pOutput);
+    BK_API bk_result bk_engine_reset_state(bk_engine engine);
+    BK_API void bk_engine_throw_exception(bk_engine engine, bk_exception code, bk_string msg, bk_integer argc, bk_integer* argv);
+    BK_API bk_result bk_engine_create_object(bk_engine engine, bk_metadata metadata, void* pData, bk_object* pResult);
 
     BK_API bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult);
     BK_API bk_result bk_emit_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen);

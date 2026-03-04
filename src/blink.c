@@ -2,7 +2,7 @@
 
 #include "yaml/yaml.h"
 
-#define NEW(type) malloc(sizeof(type)); 
+#define NEW(type) malloc(sizeof(type))
 #define DELETE(data) free((data))
 #define CLEAR(data) memset(data, 0, sizeof(*data))
 
@@ -142,20 +142,16 @@ struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
 }
 
 enum bk_token_type_t {
+    BK_TOKEN_NONE = 0,
     // -- SPECIAL STATEMENTS --
-
     // declare imports
     BK_TOKEN_DECL_IMPORT,
     // declare a subroutine
     BK_TOKEN_DECL_SUB,
     // declare arguments (only valid in the top of a subroutine declaration)
     BK_TOKEN_DECL_ARGS,
-    // declare variable
-    BK_TOKEN_DECL_VAR,
     // subroutine usage
     BK_TOKEN_USE_SUB,
-    // variable usage
-    BK_TOKEN_USE_VAR,
     // literal usage (e.g. string literal, number)
     BK_TOKEN_USE_LIT,
     // end of statement
@@ -390,8 +386,9 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
         done = (event.type == YAML_STREAM_END_EVENT);
 
         yaml_event_delete(&event);
-
-        bk_internal_list_append(tokens, &token);
+        if (token.type != BK_TOKEN_NONE) {
+            bk_internal_list_append(tokens, &token);
+        }
     }
 
     *pResult = NEW(struct bk_unit_t);
