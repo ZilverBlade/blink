@@ -1,0 +1,19 @@
+get: [std]
+
+# increments a number by 1
+inc:
+  - args: [x]
+  - std.add: [x, 1]
+
+# decrements a number by 1
+dec: 
+  - args: [x]
+  - std.add: [x, -1]
+
+# prints hello world with a number
+main:
+  - x: 0
+  - x:
+    - inc: [x]
+  - std.print: ["Hello %i!", x]
+  
