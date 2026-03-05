@@ -1,1 +1,3 @@
 - std.writeout: ["Hello World!"]
+- std.writeout: [unknown]
+- std.writeout: [YES]

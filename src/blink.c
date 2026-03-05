@@ -43,7 +43,7 @@ void bk_internal_list_append(struct bk_dynamic_list_t* list, const bk_voidptr va
         memset((char*)list->data + list->length, 0, (list->capacity - list->length) * list->elementSize);
     }
     if (val != NULL) {
-        memcpy((char*)list->data +  list->length * list->elementSize, val, list->elementSize);
+        memcpy((char*)list->data + list->length * list->elementSize, val, list->elementSize);
     }
     list->length++;
 }
@@ -512,7 +512,25 @@ void bk_release_translation_unit(bk_unit unit) {
     DELETE(unit);
 }
 
-static void bkstdlib_writeout(bk_engine engine, bk_string fmt) {
+static char s_string_coercion_stack[1024];
+static void bk_internal_coerce_to_string(struct bk_managed_value_t* val, char** pStr) {
+    if (val->type == BK_TYPE_UNKNOWN) {
+        memset(s_string_coercion_stack, 0, 2);
+    }
+    else if (val->type == BK_TYPE_BOOLEAN) {
+        memset(s_string_coercion_stack, 0, 10);
+        bk_boolean flag;
+        bk_internal_unbox_managed_value(val, &flag);
+        strncpy(s_string_coercion_stack, flag ? "True" : "False", 10);
+    }
+    else if (val->type == BK_TYPE_STRING) {
+        memset(s_string_coercion_stack, 0, 1024);
+        bk_internal_unbox_managed_value(val, s_string_coercion_stack);
+    }
+    *pStr = s_string_coercion_stack;
+}
+
+static void bkstdlib_writeout(bk_engine engine, struct bk_managed_value_t* fmt) {
     FILE* out;
     if (bk_engine_get_io(engine, NULL, &out) != BK_SUCCESS) {
         bk_engine_throw_exception(engine, BK_EX_ENGINE_FAILURE, "Failed to get IO!", 0, NULL);
@@ -522,7 +540,10 @@ static void bkstdlib_writeout(bk_engine engine, bk_string fmt) {
         bk_engine_throw_exception(engine, BK_EX_BADIO, "Missing output FILE", 0, NULL);
         return;
     };
-    fprintf(out, "%s\n", fmt);
+
+    char* ptr;
+    bk_internal_coerce_to_string(fmt, &ptr);
+    fprintf(out, "%s\n", ptr);
 }
 
 #define MAX_ARG_COUNT 64
@@ -558,7 +579,7 @@ bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits, bk_
             currentSubToken = tokenIdx;
             break;
         case BK_TOKEN_USE_SUB: {
-            if (strcmp(token->data.sub.name, "std.writeout")==0) {
+            if (strcmp(token->data.sub.name, "std.writeout") == 0) {
                 prepareFuncCall = "std.writeout";
             }
             break;
@@ -614,7 +635,7 @@ bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits, bk_
                         token->debugSource.line, token->debugSource.firstCol);
                     goto error;
                 }
-                currStack->stack[currStack->stackptr++] = token->data.lit.value->data;
+                currStack->stack[currStack->stackptr++] = token->data.lit.value;
             }
             break;
         }

@@ -119,11 +119,11 @@ int main(int argc, char** argv, char** env) {
         printf("EMISSION FAILURE\n");
         return EXIT_FAILURE;
     }
-    char* outputBuff = calloc(len + 1, 1);
+    /*char* outputBuff = calloc(len + 1, 1);
     if (bk_emit_translation_unit(main, outputBuff, &len) != BK_SUCCESS) {
         return EXIT_FAILURE;
     }
-    printf("%s\n", outputBuff);
+    printf("%s\n", outputBuff);*/
 
     bk_engine engine;
     if (bk_create_execution_engine(&engine) != BK_SUCCESS) {
