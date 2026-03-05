@@ -27,8 +27,8 @@
 #                     scalar: args
 #                     sequence start
 #                         scalar: x
-#                      sequence end
-#                  mapping end
+#                     sequence end
+#                 mapping end
 #                 mapping start
 #                     scalar: std.add
 #                     sequence start
@@ -79,4 +79,3 @@ main:
   - x:
     - inc: [x]
   - std.print: ["Hello %i!", x]
-  - True

@@ -12,8 +12,9 @@
 
 int main(int argc, char** argv, char** env) {
     /* Set a file input. */
-    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
-    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test.bk.yaml", "rb");
+    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
+    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/types.bk.yaml", "rb");
+    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test.bk.yaml", "rb");
     //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/invalid-sub.bk.yaml", "rb");
 
 #if 0
@@ -111,12 +112,13 @@ int main(int argc, char** argv, char** env) {
     };
     bk_unit main;
     if (bk_compile_translation_unit(machine, &stream, &main) != BK_SUCCESS) {
-        printf("ERROR: %s\n", bk_get_interpreter_error(machine));
+        printf("ERROR: %s\n", bk_interpreter_get_error(machine));
         return EXIT_FAILURE;
     }
 
     bk_integer len = 0;
     if (bk_emit_translation_unit(main, NULL, &len) != BK_SUCCESS) {
+        printf("EMISSION FAILURE\n");
         return EXIT_FAILURE;
     }
     char* outputBuff = calloc(len + 1, 1);
