@@ -8,6 +8,7 @@
 
 #define BK_KEYWORD_IMPORT "import"
 #define BK_KEYWORD_ARGS "args"
+#define BK_KEYWORD_STDLIB "std"
 
 char* bk_internal_clone_string(bk_string str) {
     bk_integer len = strlen(str);
@@ -35,12 +36,23 @@ void bk_internal_destroy_list(struct bk_dynamic_list_t* list) {
     DELETE(list);
 }
 
-void bk_internal_list_append(struct bk_dynamic_list_t* list, const void* val) {
+void bk_internal_list_append(struct bk_dynamic_list_t* list, const bk_voidptr val) {
     if (list->length == list->capacity) {
         list->capacity *= 2;
         list->data = realloc(list->data, list->capacity * list->elementSize);
+        memset((char*)list->data + list->length, 0, (list->capacity - list->length) * list->elementSize);
     }
-    memcpy((char*)list->data + list->length++ * list->elementSize, val, list->elementSize);
+    if (val != NULL) {
+        memcpy((char*)list->data +  list->length * list->elementSize, val, list->elementSize);
+    }
+    list->length++;
+}
+
+void bk_internal_list_pop(struct bk_dynamic_list_t* list, bk_voidptr val) {
+    --list->length;
+    if (val != NULL) {
+        memcpy(val, (char*)list->data + list->length * list->elementSize, list->elementSize);
+    }
 }
 
 
@@ -77,7 +89,7 @@ void bk_internal_unbox_managed_value(struct bk_managed_value_t* managedValue, bk
         size = sizeof(bk_object);
         break;
     case BK_TYPE_STRING:
-        size = sizeof(bk_string);
+        size = strlen(managedValue->data);
         break;
     }
     memcpy(outData, managedValue->data, size);
@@ -163,6 +175,11 @@ enum bk_token_type_t {
 
 };
 
+struct bk_debug_source_data_t {
+    bk_integer firstCol;
+    bk_integer line;
+};
+
 struct bk_token_t {
     enum bk_token_type_t type;
     union bk_token_data_t {
@@ -173,6 +190,7 @@ struct bk_token_t {
             struct bk_managed_value_t* value;
         } lit;
     } data;
+    struct bk_debug_source_data_t debugSource;
 };
 
 struct bk_env_t {
@@ -186,14 +204,15 @@ struct bk_ptr_t {
 struct bk_machine_t {
     yaml_parser_t parser;
     char* lastErrorBuf;
-    bk_integer lastErrorBufLen;
+    bk_integer lastErrorMaxBufLen;
 };
 struct bk_engine_t {
     FILE* ioOut;
     FILE* ioIn;
 
     struct bk_engine_state_t {
-        int x;
+        char* lastErrorBuf;
+        bk_integer lastErrorMaxBufLen;
     } state;
 };
 
@@ -208,8 +227,8 @@ bk_result bk_create_interpreter(bk_machine* pResult) {
     }
     *pResult = NEW(struct bk_machine_t);
     (*pResult)->parser = parser;
-    (*pResult)->lastErrorBufLen = 1024;
-    (*pResult)->lastErrorBuf = calloc((*pResult)->lastErrorBufLen, sizeof(char));
+    (*pResult)->lastErrorMaxBufLen = 1024;
+    (*pResult)->lastErrorBuf = calloc((*pResult)->lastErrorMaxBufLen, sizeof(char));
     return BK_SUCCESS;
 }
 
@@ -233,11 +252,16 @@ bk_result bk_interpreter_attach_library(bk_machine machine, bk_voidptr library) 
 
 bk_result bk_create_execution_engine(bk_engine* pResult) {
     *pResult = NEW(struct bk_engine_t);
-    CLEAR(pResult);
+    CLEAR(*pResult);
+    (*pResult)->ioIn = stdin;
+    (*pResult)->ioOut = stdout;
+    (*pResult)->state.lastErrorMaxBufLen = 1024;
+    (*pResult)->state.lastErrorBuf = calloc((*pResult)->state.lastErrorMaxBufLen, sizeof(char));
     return BK_SUCCESS;
 }
 
 void bk_destroy_execution_engine(bk_engine engine) {
+    DELETE(engine->state.lastErrorBuf);
     DELETE(engine);
 }
 
@@ -249,6 +273,9 @@ bk_result bk_engine_set_io(bk_engine engine, FILE* input, FILE* output) {
 }
 
 bk_result bk_engine_get_io(bk_engine engine, FILE** pInput, FILE** pOutput) {
+    if (engine == NULL) return BK_NULL_FAILURE;
+    if (pInput) *pInput = engine->ioIn;
+    if (pOutput) *pOutput = engine->ioOut;
     return BK_SUCCESS;
 }
 
@@ -262,6 +289,10 @@ void bk_engine_throw_exception(bk_engine engine, bk_exception code, bk_string ms
 
 bk_result bk_engine_create_object(bk_engine engine, bk_metadata metadata, bk_voidptr data, bk_object* pResult) {
     return BK_SUCCESS;
+}
+
+bk_string bk_engine_get_error(bk_engine engine) {
+    return engine->state.lastErrorBuf;
 }
 
 bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult) {
@@ -283,7 +314,7 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
         /* Get the next event. */
         if (!yaml_parser_parse(&machine->parser, &event)) {
             if (machine->parser.error == YAML_PARSER_ERROR || machine->parser.error == YAML_SCANNER_ERROR) {
-                snprintf(machine->lastErrorBuf, machine->lastErrorBufLen,
+                snprintf(machine->lastErrorBuf, machine->lastErrorMaxBufLen,
                     "Parser error (%d) at Line %zu Col %zu: %s",
                     machine->parser.problem_value, machine->parser.problem_mark.line + 1, machine->parser.problem_mark.column,
                     machine->parser.problem);
@@ -291,7 +322,7 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
                 goto error;
             }
             if (machine->parser.error == YAML_READER_ERROR) {
-                snprintf(machine->lastErrorBuf, machine->lastErrorBufLen,
+                snprintf(machine->lastErrorBuf, machine->lastErrorMaxBufLen,
                     "IO error (%d): %s",
                     machine->parser.problem_value, machine->parser.problem);
                 result = BK_IO_ERROR;
@@ -373,10 +404,12 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
         /* Are we finished? */
         done = (event.type == YAML_STREAM_END_EVENT);
 
-        yaml_event_delete(&event);
         if (token.type != BK_TOKEN_NONE) {
+            token.debugSource.line = event.start_mark.line + 1;
+            token.debugSource.firstCol = event.start_mark.column;
             bk_internal_list_append(tokens, &token);
         }
+        yaml_event_delete(&event);
     }
 
     *pResult = NEW(struct bk_unit_t);
@@ -479,8 +512,118 @@ void bk_release_translation_unit(bk_unit unit) {
     DELETE(unit);
 }
 
-bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits) {
+static void bkstdlib_writeout(bk_engine engine, bk_string fmt) {
+    FILE* out;
+    if (bk_engine_get_io(engine, NULL, &out) != BK_SUCCESS) {
+        bk_engine_throw_exception(engine, BK_EX_ENGINE_FAILURE, "Failed to get IO!", 0, NULL);
+        return;
+    }
+    if (!out) {
+        bk_engine_throw_exception(engine, BK_EX_BADIO, "Missing output FILE", 0, NULL);
+        return;
+    };
+    fprintf(out, "%s\n", fmt);
+}
+
+#define MAX_ARG_COUNT 64
+struct bk_arg_stack_t {
+    bk_voidptr stack[MAX_ARG_COUNT];
+    bk_integer stackptr;
+};
+bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits, bk_integer entrypoint) {
+    if (entrypoint >= numUnits) {
+        return BK_ENGINE_FAILURE;
+    }
+    bk_unit start = pUnits[entrypoint];
+
+    bk_integer tokenIdx = 0;
+
+    bk_integer currentSubToken = -1;
+
+    bk_string prepareFuncCall = NULL;
+    bk_boolean inAppendArgs = BK_FALSE;
+
+    struct bk_dynamic_list_t* funcCallArgsStack = bk_internal_create_list(sizeof(struct bk_arg_stack_t), 16);
 
 
-    return BK_SUCCESS;
+    bk_result result = BK_SUCCESS;
+
+    while (tokenIdx < start->tokens->length) {
+        struct bk_token_t* token = ((struct bk_token_t*)start->tokens->data) + tokenIdx;
+
+        struct bk_arg_stack_t* currStack = ((struct bk_arg_stack_t*)funcCallArgsStack->data) + funcCallArgsStack->length - 1;
+
+        switch (token->type) {
+        case BK_TOKEN_DECL_SUB:
+            currentSubToken = tokenIdx;
+            break;
+        case BK_TOKEN_USE_SUB: {
+            if (strcmp(token->data.sub.name, "std.writeout")==0) {
+                prepareFuncCall = "std.writeout";
+            }
+            break;
+        }
+        case BK_TOKEN_LIST_START: {
+            if (prepareFuncCall) {
+                inAppendArgs = BK_TRUE;
+                bk_internal_list_append(funcCallArgsStack, NULL);
+            }
+            break;
+        }
+        case BK_TOKEN_LIST_END: {
+            if (prepareFuncCall) {
+                if (funcCallArgsStack->length == 0) {
+                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
+                        "InternalMalfunctionError at Line %zu Col %zu: Execution engine expected to be in"
+                        " a subroutine call but stack is invalid",
+                        token->debugSource.line, token->debugSource.firstCol);
+                    goto error;
+                }
+                if (strcmp(prepareFuncCall, "std.writeout") == 0) {
+                    if (currStack->stackptr == 0) {
+                        snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
+                            "InsufficientArgumentsError at Line %zu Col %zu: std.writeout expects at least 1 argument, "
+                            "but 0 were provided",
+                            token->debugSource.line, token->debugSource.firstCol);
+                        goto error;
+                    }
+                    else {
+                        bkstdlib_writeout(engine, currStack->stack[0]);
+                    }
+                }
+                currStack->stackptr = 0;
+                bk_internal_list_pop(currStack, NULL);
+                prepareFuncCall = NULL;
+                inAppendArgs = BK_FALSE;
+                prepareFuncCall = NULL;
+            }
+            break;
+        }
+        case BK_TOKEN_USE_LIT: {
+            if (inAppendArgs) {
+                if (funcCallArgsStack->length == 0) {
+                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
+                        "InternalMalfunctionError at Line %zu Col %zu: Execution engine expected to be in"
+                        " a subroutine call but stack is invalid",
+                        token->debugSource.line, token->debugSource.firstCol);
+                    goto error;
+                }
+                if (currStack->stackptr == MAX_ARG_COUNT) {
+                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
+                        "TooManyArgumentsError at Line %zu Col %zu: Cannot exceed more than 64 arguments when calling a function!",
+                        token->debugSource.line, token->debugSource.firstCol);
+                    goto error;
+                }
+                currStack->stack[currStack->stackptr++] = token->data.lit.value->data;
+            }
+            break;
+        }
+        }
+        ++tokenIdx;
+    }
+
+    return result;
+
+error:
+    return BK_ENGINE_FAILURE;
 }

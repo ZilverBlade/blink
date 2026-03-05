@@ -31,8 +31,8 @@ extern "C" {
         BK_PARSER_ERROR,
         BK_INTERP_ERROR,
 
-        BK_EXEC_EXCEPTION,
-        BK_EXEC_FAILURE,
+        BK_ENGINE_EXCEPTION,
+        BK_ENGINE_FAILURE,
     } bk_result;
 
     typedef enum bk_type_t {

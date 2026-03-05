@@ -12,10 +12,7 @@
 
 int main(int argc, char** argv, char** env) {
     /* Set a file input. */
-    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/hworld.bk.yaml", "rb");
-    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/types.bk.yaml", "rb");
-    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test.bk.yaml", "rb");
-    //FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/invalid-sub.bk.yaml", "rb");
+    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/simple.bk.yaml", "rb");
 
 #if 0
     yaml_parser_t parser;
@@ -104,6 +101,7 @@ int main(int argc, char** argv, char** env) {
 #if 1
     bk_machine machine;
     if (bk_create_interpreter(&machine) != BK_SUCCESS) {
+        printf("Failed to create blink interpreter\n");
         return EXIT_FAILURE;
     }
    
@@ -127,6 +125,18 @@ int main(int argc, char** argv, char** env) {
     }
     printf("%s\n", outputBuff);
 
+    bk_engine engine;
+    if (bk_create_execution_engine(&engine) != BK_SUCCESS) {
+        printf("Failed to create blink execution engine\n");
+        return EXIT_FAILURE;
+    }
+
+    if (bk_execute(engine, &main, 1, 0) != BK_SUCCESS) {
+        printf("ERROR: %s\n", bk_engine_get_error(engine));
+        return EXIT_FAILURE;
+    }
+
+    bk_destroy_execution_engine(engine);
     bk_release_translation_unit(main);
     bk_destroy_interpreter(machine);
 #endif
