@@ -215,14 +215,14 @@ main:
 
 ### Exceptions
 
-👁‍🗨**blink** has sophisticated exception handling. Exceptions are by default propagated up the coroutine chain. These can be caught by adding square brackets around using the subroutine, and will return an Object that must be resolved using `std.ex.getmsg` to read the exception message, `std.ex.getcod` to read the exception code, `std.ex.unbox[b, i, d, s, o]` to get the underlying value. If an exception was thrown, the value will always return `unknown`.
+👁‍🗨**blink** has sophisticated exception handling. Exceptions are by default propagated up the coroutine chain. These can be caught by pushing a `catch: []` expression before using the sub, and will cause the next sub usage to return an Object that must be resolved using `std.ex.getmsg` to read the exception message, `std.ex.getcod` to read the exception code, `std.ex.unbox[b, i, d, s, o]` to get the underlying value. If an exception was thrown, the value will always return `unknown`.
 
 ```yaml
 import: [std]
 main:
-  # Catching an exception by wrapping the subroutine call in square brackets
+  # Catching an exception by wrapping the subroutine call by pushing a `catch: [ExceptionCode (optional)]` 
   - error_obj:
-    - catch: [NotANumberException]
+    - catch: []
     - std.risky_operation: []
     
   # Extracting the message and code from the exception object
