@@ -182,7 +182,7 @@ The type coercion is the strong point of this language, it has the power to conv
 
   - Decimal: for Booleans, values between (-0.5, 0.5) (Exclusive) are evaluated as falsy, and the rest as truthy. For Integers, the value is always rounded to the nearest integer, this is to mitigate floating point errors. For strings, the Decimal value is stringified.
 
-  - String: for Booleans, `""`, `"false"`, `"off"`, `"no"`, `"n", "0", "(from -0.5 exclusive to 0.5 exclusive)"` evaluate to falsy values, and everything else to truthy. For integers, strings will always assume the lowest available base first, if only numbers are used, these will be converted to integer using base 10 notation. Else, if alphanumeric characters in the range of `0-9` and `A-F` are used, the String is interpreted as a hexadecimal integer (base 16). Else, if alphanumeric characters in the range of `0-9` and `A-Z` are used, the string is converted following Base 36 notation. If this does not work, the string is assumed to follow Base64 conventions, and will convert each character to it's corresponding number and radix (Note that Base64 is *not* case insensitive). If all else fails, the result will be 0, indicating a conversion failure. Decimals follow a simpler approach, if the number does not evaluate to a Decimal, a `NotANumberException` is thrown. This is to prevent bad values like NaNs plaguing the programme.
+  - String: for Booleans, `""`, `"false"`, `"off"`, `"no"`, `"n", "0", "(from -0.5 exclusive to 0.5 exclusive)"` evaluate to falsy values, and everything else to truthy. For integers, strings will always assume the lowest available base first, if only numbers are used, these will be converted to integer using base 10 notation. Else, if alphanumeric characters in the range of `0-9` and `A-F` are used, the String is interpreted as a hexadecimal integer (base 16). Else, if alphanumeric characters in the range of `0-9` and `A-Z` are used, the string is converted following Base 36 notation. If this does not work, the string is assumed to follow Base64 conventions, and will convert each character to it's corresponding number and radix (Note that Base64 is *not* case insensitive). If all else fails, the result will be -1, indicating a conversion failure. Decimals follow a simpler approach, if the number does not evaluate to a Decimal, a `NotANumberException` is thrown. This is to prevent bad values like NaNs plaguing the programme.
 
 ***Example:***
 ```yaml
@@ -206,9 +206,11 @@ main:
   - bad_dec_str: "Not a number"
   - safe_parse:
     # Instead of silently failing with NaN, this throws NotANumberException
-    # We catch it using the standard exception brackets (see below!)
-    - [std.mul: [bad_dec_str, 1.0]]
-
+    # We catch it using the exception stack (see below!)
+    - result:
+      - catch: [NotANumberException]
+      - std.mul: [bad_dec_str, 1.0]
+    
 ```
 
 ### Exceptions
@@ -220,7 +222,8 @@ import: [std]
 main:
   # Catching an exception by wrapping the subroutine call in square brackets
   - error_obj:
-    - [std.risky_operation: []]
+    - catch: [NotANumberException]
+    - std.risky_operation: []
     
   # Extracting the message and code from the exception object
   - msg:
