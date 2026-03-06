@@ -26,7 +26,7 @@ extern "C" {
     BK_API bk_result bk_engine_create_object(bk_engine engine, bk_metadata metadata, bk_voidptr data, bk_object* pResult);
     BK_API bk_string bk_engine_get_error(bk_engine engine);
 
-    BK_API bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult);
+    BK_API bk_result bk_compile_translation_unit(bk_machine machine,  bk_stream* pStream, bk_string name, bk_unit* pResult);
     BK_API bk_result bk_emit_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen);
     BK_API void bk_release_translation_unit(bk_unit unit);
 

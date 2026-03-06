@@ -33,6 +33,7 @@ extern "C" {
 
         BK_ENGINE_EXCEPTION,
         BK_ENGINE_FAILURE,
+        BK_ENGINE_NOT_IMPLEMENTED,
     } bk_result;
 
     typedef enum bk_type_t {
@@ -58,6 +59,7 @@ extern "C" {
         BK_EX_UNKNOWNVAL,
         BK_EX_OBJECTCONVERSION,
         BK_EX_DIVISIONBYZERO,
+        BK_EX_MISSINGARGUMENT,
         BK_EX_NOTANUMBER,
         BK_EX_BADFORMAT,
         BK_EX_BADIO,

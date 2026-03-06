@@ -50,7 +50,7 @@ import: [std]
 
 main:
   # std.writeout is a special sub, since it accepts any number of arguments 
-  - std.writeout: ["Hello %i!", 42]
+  std.writeout: ["Hello %i!", 42]
 ```
 
 👁‍🗨**blink** libraries have strict naming conventions, they must be named `bk[name]lib`, so the `std` module is called `bkstdlib`.
@@ -64,8 +64,7 @@ import: [std]
 main:
   # There are no 'if' statements or 'while' loops here.
   # Programs flow directly from top to bottom (or via bounded recursion).
-  - std.writeout: ["This program will always halt!"]
-  - True
+  std.writeout: ["This program will always halt!"]
 ```
 
 ### Subroutines and Subconstants
@@ -77,18 +76,15 @@ A subroutine can be overridden in definition later on, dynamically as explained 
 ```yaml
 import: [std]
 # Subconstant that returns 0, identical to a "variable"
-zero:
-  - 0
-# This statement is equivalent!
 zero: 0
 
 # A subroutine that accepts arguments and increments a number by 1
 inc:
   # declare expected arguments using the special `args` statement.
   # This must be declared in the top of the subroutine!
-  - args: [x]
+  args: [$left]
   # evaluates, and returns the value (since it's the last statement)
-  - std.add: [x, 1]
+  std.add: [$left, 1]
 
 main:
   # Calling a sub explicitly with 0 arguments, passing the value to `foo`
@@ -111,7 +107,7 @@ main:
 # Since `num` is not declared here, a `UndeclaredSubException` will be thrown
 import: [std]
 main:
-  - std.writeout: ["Running isolated unit", num]
+  std.writeout: ["Running isolated unit %s", num]
 ```
 ### Dynamic scoping:
 
@@ -121,14 +117,35 @@ main:
 import: [std]
 foo:
   # x is not defined! but with dynamic scoping, this will write "x = 2"!
-  - std.writeout: ["x = %i", x]
+  std.writeout: ["x = %i", x]
 
 main:
   # declaring x and setting it to 2 (dynamically scoping x)
-  - x: 2
+  x: 2
   # "x = 2" will be outputted!
-  - foo: []
+  foo: []
 ```
+
+Notice that this also applies to subroutines declaring input arguments!
+
+
+```yaml
+import: [std]
+foo:
+  args: [x]
+  std.writeout: ["x = %i", x]
+  # x will be redeclared everywhere!
+  x: 10
+
+main:
+  x: 2
+  # prints x = 2
+  foo: []
+  # prints x = 10
+  foo: []
+```
+
+It is thus standard practice to write `$argument`, e.g. `$x` to denote that this is an input argument. 
 
 ### Dynamic type system and coercion:
 
@@ -148,27 +165,27 @@ main:
 
 ```yaml
 # Variables are considered subroutines. They are immutable.
-- u: unknown
+u: unknown
 
 # Booleans (truthy: true, y, yes, on | falsy: false, n, no, off)
-- b1: True
-- b2: Yes
-- b3: On
-- c1: false
-- c2: no
-- c3: off
+b1: True
+b2: Yes
+b3: On
+c1: false
+c2: no
+c3: off
 
 # Integers and Decimals
-- i1: 42
-- f1: 3.1415926
+i1: 42
+f1: 3.1415926
 
 # Strings
-- cstr: "Hello"
-- cstr2: '10'
+cstr: "Hello"
+cstr2: '10'
 
 # References (copying subconstants)
-- cpy: b1
-- cpy2: cpy
+cpy: b1
+cpy2: cpy
 
 ```
 
@@ -190,24 +207,24 @@ The type coercion is the strong point of this language, it has the power to conv
 import: [std]
 main:
   # 1. String to Integer coercion (Dynamic Base Parsing)
-  - string_num: "FF" 
+  string_num: "FF" 
   # "FF" contains 'F', so it naturally coercions via Hexadecimal (Base 16) to 255
-  - math_result:
-    - std.add: [string_num, 5] # Result is implicitly 260
+  math_result:
+    std.add: [string_num, 5] # Result is implicitly 260
     
   # 2. Decimal to Boolean coercion
-  - small_dec: 0.3
-  - is_falsy:
+  small_dec: 0.3
+  is_falsy:
     # Decimals strictly between -0.5 and 0.5 are falsy. 
     # Therefore, std.not will return True!
-    - std.not: [small_dec] 
+    std.not: [small_dec] 
 
   # 3. String to Decimal coercion with Exception Fallback
-  - bad_dec_str: "Not a number"
-  - safe_parse:
+  bad_dec_str: "Not a number"
+  safe_parse:
     # Instead of silently failing with NaN, this throws NotANumberException
     # We catch it using the standard exception brackets (see below!)
-    - [std.mul: [bad_dec_str, 1.0]]
+    [std.mul: [bad_dec_str, 1.0]]
 
 ```
 
@@ -219,19 +236,19 @@ main:
 import: [std]
 main:
   # Catching an exception by wrapping the subroutine call in square brackets
-  - error_obj:
-    - [std.risky_operation: []]
+  error_obj:
+    [std.risky_operation: []]
     
   # Extracting the message and code from the exception object
-  - msg:
-    - std.ex.getmsg: [error_obj]
-  - code:
-    - std.ex.getcod: [error_obj]
-  - value:
+  msg:
+    std.ex.getmsg: [error_obj]
+  code:
+    std.ex.getcod: [error_obj]
+  value:
   # Unboxing as an integer, if the exception has been thrown,
   # this will return 0 (As seen in the type coercion)
-    - std.ex.unboxi: [error_obj]
+    std.ex.unboxi: [error_obj]
     
   # Printing the caught exception message
-  - std.writeout: ["Caught Exception: %s, value may be %i", msg, value]
+  std.writeout: ["Caught Exception: %s, value may be %i", msg, value]
 ```

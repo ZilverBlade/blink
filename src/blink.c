@@ -1,21 +1,17 @@
 #include "blink.h"
+#include "internal/strhashmap.h"
 
-#include "yaml/yaml.h"
+#include "internal/yaml/yaml.h"
 
-#define NEW(type) malloc(sizeof(type))
+#include <assert.h>
+
+#define NEW(type) calloc(1, sizeof(type))
 #define DELETE(data) free((data))
 #define CLEAR(data) memset(data, 0, sizeof(*data))
 
 #define BK_KEYWORD_IMPORT "import"
 #define BK_KEYWORD_ARGS "args"
 #define BK_KEYWORD_STDLIB "std"
-
-char* bk_internal_clone_string(bk_string str) {
-    bk_integer len = strlen(str);
-    char* new = calloc(len + 1, sizeof(char));
-    strncpy(new, str, len);
-    return new;
-}
 
 struct bk_dynamic_list_t {
     void* data;
@@ -25,18 +21,17 @@ struct bk_dynamic_list_t {
 };
 struct bk_dynamic_list_t* bk_internal_create_list(int elementSize, int initialCapacity) {
     struct bk_dynamic_list_t* list = NEW(struct bk_dynamic_list_t);
-    CLEAR(list);
     list->data = calloc(initialCapacity, elementSize);
     list->elementSize = elementSize;
     list->capacity = initialCapacity;
     return list;
 }
-void bk_internal_destroy_list(struct bk_dynamic_list_t* list) {
+static void bk_internal_destroy_list(struct bk_dynamic_list_t* list) {
     DELETE(list->data);
     DELETE(list);
 }
 
-void bk_internal_list_append(struct bk_dynamic_list_t* list, const bk_voidptr val) {
+static void bk_internal_list_append(struct bk_dynamic_list_t* list, const bk_voidptr val) {
     if (list->length == list->capacity) {
         list->capacity *= 2;
         list->data = realloc(list->data, list->capacity * list->elementSize);
@@ -61,9 +56,9 @@ struct bk_managed_value_t {
     bk_voidptr data;
 };
 
+
 struct bk_managed_value_t* bk_internal_box_managed_value(const bk_voidptr inData, bk_integer size, bk_type type) {
     struct bk_managed_value_t* ret = NEW(struct bk_managed_value_t);
-    CLEAR(ret);
     ret->type = type;
     ret->data = size == 0 ? NULL : malloc(size);
     memcpy(ret->data, inData, size);
@@ -72,36 +67,42 @@ struct bk_managed_value_t* bk_internal_box_managed_value(const bk_voidptr inData
 
 #define bk_internal_box_type(v, type) bk_internal_box_managed_value(&v, sizeof(v), type)
 
-void bk_internal_unbox_managed_value(struct bk_managed_value_t* managedValue, bk_voidptr outData) {
-    bk_integer size = 0;
+static bk_integer bk_internal_get_managed_value_size(struct bk_managed_value_t* managedValue) {
     switch (managedValue->type) {
     case BK_TYPE_UNKNOWN:
-        size = 0;
-        break;
+        return 0;
     case BK_TYPE_INTEGER:
     case BK_TYPE_DECIMAL:
-        size = 4;
-        break;
     case BK_TYPE_BOOLEAN:
-        size = 1;
-        break;
+        return 4;
     case BK_TYPE_OBJECT:
-        size = sizeof(bk_object);
-        break;
+        return sizeof(bk_object);
     case BK_TYPE_STRING:
-        size = strlen(managedValue->data);
+        return strlen(managedValue->data);
         break;
+    default:
+        assert(0);
     }
+}
+struct bk_managed_value_t* bk_internal_clone_managed_value(struct bk_managed_value_t* managedValue) {
+    return bk_internal_box_managed_value(managedValue->data, bk_internal_get_managed_value_size(managedValue), managedValue->type);
+}
+
+static void bk_internal_unbox_managed_value(struct bk_managed_value_t* managedValue, bk_voidptr outData) {
+    assert(outData);
+    bk_integer size = bk_internal_get_managed_value_size(managedValue);
     memcpy(outData, managedValue->data, size);
 }
 
 
-void bk_internal_destroy_managed_value(struct bk_managed_value_t* managedValue) {
-    DELETE(managedValue->data);
+static void bk_internal_destroy_managed_value(struct bk_managed_value_t* managedValue) {
+    if (managedValue) {
+        DELETE(managedValue->data);
+    }
     DELETE(managedValue);
 }
 
-struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
+static struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
     if (!value || value[0] == '\0' || strcmp(value, "unknown") == 0) {
         return bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
     }
@@ -120,7 +121,7 @@ struct bk_managed_value_t* bk_internal_parse_as_managed_value(bk_string value) {
         }
     }
     {
-        char* copy = bk_internal_clone_string(value);
+        char* copy = strdup(value);
         char* trimmed = copy;
         while (trimmed[0] == ' ') {
             ++trimmed;
@@ -162,16 +163,14 @@ enum bk_token_type_t {
     BK_TOKEN_USE_SUB,
     // literal usage (e.g. string literal, number)
     BK_TOKEN_USE_LIT,
-    // end of statement
-    BK_TOKEN_BREAK,
 
     // -- GENERIC STATEMENTS --
 
-    BK_TOKEN_IN_START,
-    BK_TOKEN_IN_END,
+    BK_TOKEN_SUB_START,
+    BK_TOKEN_SUB_END,
 
-    BK_TOKEN_LIST_START,
-    BK_TOKEN_LIST_END,
+    BK_TOKEN_ARG_START,
+    BK_TOKEN_ARG_END,
 
 };
 
@@ -184,7 +183,7 @@ struct bk_token_t {
     enum bk_token_type_t type;
     union bk_token_data_t {
         struct bk_token_data_sub_t {
-            char* name;
+            bk_string name;
         } sub;
         struct bk_token_data_lit_t {
             struct bk_managed_value_t* value;
@@ -193,12 +192,11 @@ struct bk_token_t {
     struct bk_debug_source_data_t debugSource;
 };
 
-struct bk_env_t {
-    int x;
-};
-
-struct bk_ptr_t {
-    int x;
+struct bk_sub_t {
+    bk_integer tokStart;
+    bk_integer tokEnd;
+    bk_integer argc;
+    struct bk_managed_value_t* currentValue;
 };
 
 struct bk_machine_t {
@@ -206,17 +204,24 @@ struct bk_machine_t {
     char* lastErrorBuf;
     bk_integer lastErrorMaxBufLen;
 };
+
+struct bk_engine_unit_state_t {
+    bk_strhashmap subs; // struct bk_sub_t
+    struct bk_managed_value_t* currentValue;
+};
+struct bk_engine_state_t {
+    char* lastErrorBuf;
+    bk_integer lastErrorMaxBufLen;
+    bk_strhashmap unitStates; // struct bk_engine_unit_state_t
+};
 struct bk_engine_t {
     FILE* ioOut;
     FILE* ioIn;
-
-    struct bk_engine_state_t {
-        char* lastErrorBuf;
-        bk_integer lastErrorMaxBufLen;
-    } state;
+    struct bk_engine_state_t state;
 };
 
 struct bk_unit_t {
+    bk_string name;
     struct bk_dynamic_list_t* tokens;
 };
 
@@ -252,12 +257,9 @@ bk_result bk_interpreter_attach_library(bk_machine machine, bk_voidptr library) 
 
 bk_result bk_create_execution_engine(bk_engine* pResult) {
     *pResult = NEW(struct bk_engine_t);
-    CLEAR(*pResult);
     (*pResult)->ioIn = stdin;
     (*pResult)->ioOut = stdout;
-    (*pResult)->state.lastErrorMaxBufLen = 1024;
-    (*pResult)->state.lastErrorBuf = calloc((*pResult)->state.lastErrorMaxBufLen, sizeof(char));
-    return BK_SUCCESS;
+    return bk_engine_reset_state(*pResult);
 }
 
 void bk_destroy_execution_engine(bk_engine engine) {
@@ -280,6 +282,20 @@ bk_result bk_engine_get_io(bk_engine engine, FILE** pInput, FILE** pOutput) {
 }
 
 bk_result bk_engine_reset_state(bk_engine engine) {
+    bk_internal_strhashmap_for_each(engine->state.unitStates, it) {
+        struct bk_engine_unit_state_t* unitstate = it.value;
+        bk_internal_strhashmap_for_each(unitstate->subs, it2) {
+            free(it2.value); // struct bk_sub_t
+        }
+        free(unitstate);
+    }
+    bk_internal_free_strhashmap(engine->state.unitStates);
+    engine->state.unitStates = bk_internal_create_strhashmap();
+
+    engine->state.lastErrorMaxBufLen = 1024;
+    DELETE(engine->state.lastErrorBuf);
+    engine->state.lastErrorBuf = calloc(engine->state.lastErrorMaxBufLen, sizeof(char));
+
     return BK_SUCCESS;
 }
 
@@ -295,7 +311,10 @@ bk_string bk_engine_get_error(bk_engine engine) {
     return engine->state.lastErrorBuf;
 }
 
-bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_unit* pResult) {
+bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_string name, bk_unit* pResult) {
+    if (name == NULL) {
+        return BK_NULL_FAILURE;
+    }
     yaml_event_t event;
 
     yaml_parser_set_input_file(&machine->parser, pStream->pFile);
@@ -355,21 +374,21 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
             break;
 
         case YAML_MAPPING_START_EVENT:
-            token.type = BK_TOKEN_IN_START;
+            token.type = BK_TOKEN_SUB_START;
             PROMOTE_SUB_USAGE();
             ++nestingLevel;
             break;
         case YAML_MAPPING_END_EVENT:
-            token.type = BK_TOKEN_IN_END;
+            token.type = BK_TOKEN_SUB_END;
             useSubTok = -1;
             --nestingLevel;
             break;
         case YAML_SEQUENCE_START_EVENT:
-            token.type = BK_TOKEN_LIST_START;
+            token.type = BK_TOKEN_ARG_START;
             inSequence = BK_TRUE;
             break;
         case YAML_SEQUENCE_END_EVENT:
-            token.type = BK_TOKEN_LIST_END;
+            token.type = BK_TOKEN_ARG_END;
             inSequence = BK_FALSE;
             useSubTok = -1;
             break;
@@ -391,7 +410,7 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
                 if (!token.data.lit.value) {
                     // must be a sub usage or declaration! This will depend on the following arguments
                     token.type = BK_TOKEN_USE_SUB;
-                    token.data.sub.name = bk_internal_clone_string(event.data.scalar.value);
+                    token.data.sub.name = strdup(event.data.scalar.value);
                     useSubTok = tokens->length;
                 }
             }
@@ -414,6 +433,7 @@ bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk
 
     *pResult = NEW(struct bk_unit_t);
     (*pResult)->tokens = tokens;
+    (*pResult)->name = strdup(name);
     return BK_SUCCESS;
 
 error:
@@ -426,27 +446,30 @@ bk_result bk_emit_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufL
     if (unit == NULL || pBufLen == NULL) {
         return BK_NULL_FAILURE;
     }
+#define ADJ_LEN() do if (*pBufLen == 0 || (*pBufLen - length < 0)) remaining = 0; else remaining = *pBufLen - length; while (0)
+#define ADJ_BUF() (outBuf ? (outBuf + length) : NULL)
 
     bk_integer length = 0;
     bk_integer remaining = *pBufLen;
+
+    length += snprintf(ADJ_BUF(), remaining, "bk_unit: %s\n", unit->name);
+    ADJ_LEN();
+
     for (bk_integer i = 0; i < unit->tokens->length; ++i) {
-#define ADJ_LEN() do if (*pBufLen == 0 || (*pBufLen - length < 0)) remaining = 0; else remaining = *pBufLen - length; while (0)
-#define ADJ_BUF() (outBuf ? (outBuf + length) : NULL)
         struct bk_token_t* token = (struct bk_token_t*)unit->tokens->data + i;
         bk_string tokenName = NULL;
         switch (token->type) {
         case BK_TOKEN_DECL_SUB: tokenName = "DECL_SUB"; break;
         case BK_TOKEN_USE_SUB: tokenName = "USE_SUB"; break;
         case BK_TOKEN_USE_LIT: tokenName = "USE_LIT"; break;
-        case BK_TOKEN_BREAK: tokenName = "BREAK"; break;
-        case BK_TOKEN_IN_START: tokenName = "IN_START"; break;
-        case BK_TOKEN_IN_END: tokenName = "IN_END"; break;
-        case BK_TOKEN_LIST_START: tokenName = "LIST_START"; break;
-        case BK_TOKEN_LIST_END: tokenName = "LIST_END"; break;
+        case BK_TOKEN_SUB_START: tokenName = "SUB_START"; break;
+        case BK_TOKEN_SUB_END: tokenName = "SUB_END"; break;
+        case BK_TOKEN_ARG_START: tokenName = "ARG_START"; break;
+        case BK_TOKEN_ARG_END: tokenName = "ARG_END"; break;
         default:
             return BK_FAILURE;
         }
-        length += snprintf(ADJ_BUF(), remaining, "bk_token: %s", tokenName);
+        length += snprintf(ADJ_BUF(), remaining, "%d\t| bk_token: %s", i, tokenName);
         ADJ_LEN();
         switch (token->type) {
         case BK_TOKEN_DECL_SUB:
@@ -509,10 +532,12 @@ void bk_release_translation_unit(bk_unit unit) {
         }
         bk_internal_destroy_list(unit->tokens);
     }
+    DELETE(unit->name);
     DELETE(unit);
 }
 
-static char s_string_coercion_stack[1024];
+#define cs_string_coercion_stack 1024
+static char s_string_coercion_stack[cs_string_coercion_stack];
 static void bk_internal_coerce_to_string(struct bk_managed_value_t* val, char** pStr) {
     if (val->type == BK_TYPE_UNKNOWN) {
         memset(s_string_coercion_stack, 0, 2);
@@ -524,8 +549,20 @@ static void bk_internal_coerce_to_string(struct bk_managed_value_t* val, char** 
         strncpy(s_string_coercion_stack, flag ? "True" : "False", 10);
     }
     else if (val->type == BK_TYPE_STRING) {
-        memset(s_string_coercion_stack, 0, 1024);
+        memset(s_string_coercion_stack, 0, cs_string_coercion_stack);
         bk_internal_unbox_managed_value(val, s_string_coercion_stack);
+    }
+    else if (val->type == BK_TYPE_INTEGER) {
+        memset(s_string_coercion_stack, 0, cs_string_coercion_stack);
+        bk_integer value;
+        bk_internal_unbox_managed_value(val, &value);
+        snprintf(s_string_coercion_stack, cs_string_coercion_stack, "%i", value);
+    }
+    else if (val->type == BK_TYPE_DECIMAL) {
+        memset(s_string_coercion_stack, 0, cs_string_coercion_stack);
+        bk_decimal value;
+        bk_internal_unbox_managed_value(val, &value);
+        snprintf(s_string_coercion_stack, cs_string_coercion_stack, "%f", value);
     }
     *pStr = s_string_coercion_stack;
 }
@@ -551,98 +588,164 @@ struct bk_arg_stack_t {
     bk_voidptr stack[MAX_ARG_COUNT];
     bk_integer stackptr;
 };
+
+static bk_result bk_gather_arguments(bk_engine engine, struct bk_engine_unit_state_t* unitState, bk_unit unit, bk_integer* pTokenIdx) {
+
+}
+static bk_result bk_consume_sub(bk_engine engine, struct bk_engine_unit_state_t* unitState, bk_unit unit,
+    bk_integer* pTokenIdx, bk_integer endTokenIdx, struct bk_sub_t* currSub) {
+    bk_result result = BK_SUCCESS;
+
+    struct bk_managed_value_t** pReturn = NULL;
+    if (currSub == NULL) {
+        pReturn = &unitState->currentValue;
+    }
+    else {
+        pReturn = &currSub->currentValue;
+    }
+    struct bk_sub_t* lastSubDecl = NULL;
+    struct bk_sub_t* pendingSubCall = NULL;
+    bk_integer local_scope_block = 0;
+    bk_integer pending_scope_block = -1;
+    bk_boolean previous_token_is_subdecl = BK_FALSE;
+
+#define UPDATE_D()    { previous_token_is_subdecl = BK_FALSE;                           \
+    if (pending_scope_block != -1 && local_scope_block != pending_scope_block) continue;\
+    pending_scope_block = -1;                                                           \
+    if (lastSubDecl) { /* parent sub */                                                 \
+        lastSubDecl->tokEnd = currTokenIdx;                                             \
+        lastSubDecl = NULL;                                                             \
+    }                                                                                   \
+    }          
+
+#define CALL_D() do {                                                                   \
+        bk_integer subToken = pendingSubCall->tokStart;                                 \
+        printf("call %i\n", subToken-1);result = bk_consume_sub(engine, unitState, unit, &subToken,                     \
+            pendingSubCall->tokEnd, currSub);                                           \
+        if (result != BK_SUCCESS) {                                                     \
+            goto error;                                                                 \
+        }                                                                               \
+        struct bk_token_t* subTokenPtr = unit->tokens->data;                            \
+        subTokenPtr += pendingSubCall->tokStart - 1;                                    \
+        struct bk_sub_t* calledSub = bk_internal_strhashmap_get_ptr(                    \
+            unitState->subs, subTokenPtr->data.sub.name);                               \
+        bk_internal_destroy_managed_value(*pReturn);                                    \
+        *pReturn = calledSub->currentValue;                                             \
+        assert(*pReturn);                                                               \
+        pendingSubCall = NULL;                                                          \
+    } while (0)                                                                
+
+    while (*pTokenIdx < endTokenIdx) {
+        bk_integer currTokenIdx = (*pTokenIdx)++;
+        struct bk_token_t* token = ((struct bk_token_t*)unit->tokens->data) + currTokenIdx;
+        switch (token->type) {
+        case BK_TOKEN_DECL_SUB: {
+            UPDATE_D();
+            if (pendingSubCall) {
+                CALL_D();
+            }
+            currSub = NEW(struct bk_sub_t);
+            lastSubDecl = currSub;
+            currSub->tokStart = currTokenIdx + 1;
+            struct bk_sub_t* oldSub = bk_internal_strhashmap_put(unitState->subs, token->data.sub.name, currSub);
+            if (oldSub) {
+                currSub->currentValue = oldSub->currentValue;
+            }
+            else { //default to unknown
+                currSub->currentValue = bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
+            }
+            pending_scope_block = local_scope_block;
+            previous_token_is_subdecl = BK_TRUE;
+            DELETE(oldSub);
+            break;
+        } case BK_TOKEN_USE_SUB:
+            UPDATE_D();
+            if (pendingSubCall) {
+                CALL_D();
+            }
+            if (strcmp(token->data.sub.name, BK_KEYWORD_IMPORT) == 0) {
+                result = BK_ENGINE_NOT_IMPLEMENTED;
+                goto error;
+                //bk_find_imports(engine, unitState, unit, pTokenIdx);
+                //currSub->currentValue = bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
+            }
+            else if (strcmp(token->data.sub.name, BK_KEYWORD_ARGS) == 0) {
+                result = BK_ENGINE_NOT_IMPLEMENTED;
+                goto error;
+            }
+            else {
+                pendingSubCall = bk_internal_strhashmap_get_ptr(unitState->subs, token->data.sub.name);
+            }
+            break;
+        case BK_TOKEN_USE_LIT:
+            if (previous_token_is_subdecl) {
+                continue; // 
+            }
+            else {
+                UPDATE_D();
+                if (pendingSubCall) {
+                    CALL_D();
+                }
+            }
+            printf("consume ");
+            bkstdlib_writeout(engine, token->data.lit.value);
+            bk_internal_destroy_managed_value(*pReturn);
+            *pReturn = bk_internal_clone_managed_value(token->data.lit.value);
+            break;
+        case BK_TOKEN_ARG_START:
+            UPDATE_D();
+            if (pendingSubCall) {
+                // todo gather arguments
+            }
+            break;
+        case BK_TOKEN_ARG_END:
+            UPDATE_D();
+            if (pendingSubCall) {
+                CALL_D();
+            }
+            break;
+        case BK_TOKEN_SUB_START:
+            previous_token_is_subdecl = BK_FALSE;
+            ++local_scope_block;
+            break;
+        case BK_TOKEN_SUB_END:
+            previous_token_is_subdecl = BK_FALSE;
+            --local_scope_block;
+            break;
+        default:
+            break;
+        }
+    }
+    if (pendingSubCall) {
+        CALL_D();
+    }
+    return result;
+
+error:
+    return BK_ENGINE_FAILURE;
+}
 bk_result bk_execute(bk_engine engine, bk_unit* pUnits, bk_integer numUnits, bk_integer entrypoint) {
     if (entrypoint >= numUnits) {
         return BK_ENGINE_FAILURE;
     }
-    bk_unit start = pUnits[entrypoint];
-
-    bk_integer tokenIdx = 0;
-
-    bk_integer currentSubToken = -1;
-
-    bk_string prepareFuncCall = NULL;
-    bk_boolean inAppendArgs = BK_FALSE;
-
-    struct bk_dynamic_list_t* funcCallArgsStack = bk_internal_create_list(sizeof(struct bk_arg_stack_t), 16);
-
-
-    bk_result result = BK_SUCCESS;
-
-    while (tokenIdx < start->tokens->length) {
-        struct bk_token_t* token = ((struct bk_token_t*)start->tokens->data) + tokenIdx;
-
-        struct bk_arg_stack_t* currStack = ((struct bk_arg_stack_t*)funcCallArgsStack->data) + funcCallArgsStack->length - 1;
-
-        switch (token->type) {
-        case BK_TOKEN_DECL_SUB:
-            currentSubToken = tokenIdx;
-            break;
-        case BK_TOKEN_USE_SUB: {
-            if (strcmp(token->data.sub.name, "std.writeout") == 0) {
-                prepareFuncCall = "std.writeout";
-            }
-            break;
+    for (bk_integer i = 0; i < numUnits; ++i) {
+        if (!bk_internal_strhashmap_get_ptr(engine->state.unitStates, pUnits[i]->name)) {
+            struct bk_engine_unit_state_t* unitState = NEW(struct bk_engine_unit_state_t);
+            bk_internal_strhashmap_put(engine->state.unitStates, pUnits[i]->name, unitState);
+            unitState->subs = bk_internal_create_strhashmap();
         }
-        case BK_TOKEN_LIST_START: {
-            if (prepareFuncCall) {
-                inAppendArgs = BK_TRUE;
-                bk_internal_list_append(funcCallArgsStack, NULL);
-            }
-            break;
-        }
-        case BK_TOKEN_LIST_END: {
-            if (prepareFuncCall) {
-                if (funcCallArgsStack->length == 0) {
-                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
-                        "InternalMalfunctionError at Line %zu Col %zu: Execution engine expected to be in"
-                        " a subroutine call but stack is invalid",
-                        token->debugSource.line, token->debugSource.firstCol);
-                    goto error;
-                }
-                if (strcmp(prepareFuncCall, "std.writeout") == 0) {
-                    if (currStack->stackptr == 0) {
-                        snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
-                            "InsufficientArgumentsError at Line %zu Col %zu: std.writeout expects at least 1 argument, "
-                            "but 0 were provided",
-                            token->debugSource.line, token->debugSource.firstCol);
-                        goto error;
-                    }
-                    else {
-                        bkstdlib_writeout(engine, currStack->stack[0]);
-                    }
-                }
-                currStack->stackptr = 0;
-                bk_internal_list_pop(currStack, NULL);
-                prepareFuncCall = NULL;
-                inAppendArgs = BK_FALSE;
-                prepareFuncCall = NULL;
-            }
-            break;
-        }
-        case BK_TOKEN_USE_LIT: {
-            if (inAppendArgs) {
-                if (funcCallArgsStack->length == 0) {
-                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
-                        "InternalMalfunctionError at Line %zu Col %zu: Execution engine expected to be in"
-                        " a subroutine call but stack is invalid",
-                        token->debugSource.line, token->debugSource.firstCol);
-                    goto error;
-                }
-                if (currStack->stackptr == MAX_ARG_COUNT) {
-                    snprintf(engine->state.lastErrorBuf, engine->state.lastErrorMaxBufLen,
-                        "TooManyArgumentsError at Line %zu Col %zu: Cannot exceed more than 64 arguments when calling a function!",
-                        token->debugSource.line, token->debugSource.firstCol);
-                    goto error;
-                }
-                currStack->stack[currStack->stackptr++] = token->data.lit.value;
-            }
-            break;
-        }
-        }
-        ++tokenIdx;
     }
 
+    bk_result result = BK_SUCCESS;
+    bk_unit start = pUnits[entrypoint];
+    struct bk_engine_unit_state_t* currUnitState = bk_internal_strhashmap_get_ptr(engine->state.unitStates, start->name);
+    assert(currUnitState);
+    bk_integer tokenIdx = 0;
+
+    result = bk_consume_sub(engine,
+        currUnitState, start,
+        &tokenIdx, start->tokens->length, NULL);
+    bkstdlib_writeout(engine, currUnitState->currentValue);
     return result;
 
 error:

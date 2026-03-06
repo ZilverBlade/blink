@@ -1,3 +1,41 @@
-- std.writeout: ["Hello World!"]
-- std.writeout: [unknown]
-- std.writeout: [YES]
+# - std.writeout: ["Hello World!"]
+# - std.writeout: [unknown]
+# - std.writeout: [YES]
+
+# -- EMISISON --
+#
+# bk_unit: main
+# bk_token: IN_START
+#   bk_token: IN_START
+#       bk_token: USE_SUB, (hello_float)
+#           bk_token: LIST_START
+#               bk_token: USE_LIT, [0.124211]
+#           bk_token: LIST_END
+#   bk_token: IN_END
+#   bk_token: IN_START
+#       bk_token: DECL_SUB, (hello_var)
+#           bk_token: LIST_START
+#               bk_token: IN_START
+#                   bk_token: USE_SUB, (hello_float)
+#                       bk_token: LIST_START
+#                       bk_token: LIST_END
+#               bk_token: IN_END
+#           bk_token: LIST_END
+#   bk_token: IN_END
+#   bk_token: IN_START
+#       bk_token: USE_SUB, (hello_var)
+#           bk_token: LIST_START
+#           bk_token: LIST_END
+#   bk_token: IN_END
+# bk_token: LIST_END
+
+hello_float: 0.124211
+hello_var: 
+  hello_float: [$x]
+  hello_string:
+    hello_world: "Hello World!"
+    hello_world: []
+  hello_string: 
+    hello_float: []
+  hello_string: []
+hello_var: []
