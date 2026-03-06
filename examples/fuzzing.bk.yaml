@@ -1,86 +1,80 @@
 # Import standard library
 import: [std]
 
-# --- 1. The Abyss: Deeply Nested Subconstants ---
-# Testing how the parser handles massive nesting, mixed flow/block styles, 
-# and various quotation marks natively parsed by YAML.
+# 1. The Abyss: Deeply Nested Subconstants
+# Testing how the parser handles massive nesting and flow styles natively parsed by YAML.
 chaos_data:
-  - deeply_nested_blocks:
-    - - - - - - "bottom of the well"
-              - 'single quoted depth'
-              - yEs
-              - oFf
-              - unknown
-  - flow_style_nightmare:
-    - empty_structures: [[], {}, [{}], {a: []}, [[[]]]]
-    - dense_array: [1, 2.5, "3", [4, "five", [6, On]], unknown]
-  - exhaustive_booleans:
+  # Replaced structural hyphens with nested flow arrays
+  deeply_nested_blocks: [[[["bottom of the well", 'single quoted depth', yEs, oFf, unknown]]]]
+  flow_style_nightmare:
+    empty_structures: [[], {}, [{}], {a: []}, [[[]]]]
+    dense_array: [1, 2.5, "3", [4, "five", [6, On]], unknown]
+  exhaustive_booleans:
     # Testing case insensitivity across all allowed flags
-    - truthy: [True, y, yes, on, TRUE, Y, YES, ON, tRuE]
-    - falsy: [False, n, no, off, FALSE, N, NO, OFF, fAlSe]
-  - coercion_strings:
+    truthy: [True, y, yes, on, TRUE, Y, YES, ON, tRuE]
+    falsy: [False, n, no, off, FALSE, N, NO, OFF, fAlSe]
+  coercion_strings:
     # Strings that look like numbers, hex, and base36 to stress the coercion engine
-    - ["0", "-0.49", "1A", "ZZZ", "0.0", "  42  "]
+    # (Negative numbers retain their scalar minus sign, but structure hyphens are gone)
+    strings: ["0", "-0.49", "1A", "ZZZ", "0.0", "  42  "]
 
-# --- 2. Scope & Argument Fuzzing Subroutine ---
-# Testing nested subroutine calls inside argument lists
+# 2. Scope & Argument Fuzzing Subroutine
 fuzzer_func:
-  - args: [input_list, scalar_val, flag]
-  - useless_math:
-    - std.add:
-      - std.mul: 
-        - scalar_val
-        - 2
-      - std.add: [10, -5]
-  - std.writeout: ["Fuzzer processed scalar %i with flag %s", scalar_val, flag]
+  args: [input_list, scalar_val, flag]
+  useless_math:
+    # Extracted nested calls into intermediate variables to avoid block lists
+    mul_res:
+      std.mul: [scalar_val, 2]
+    add_res:
+      std.add: [10, -5]
+    std.add: [mul_res, add_res]
+  std.writeout: ["Fuzzer processed scalar %i with flag %s", scalar_val, flag]
 
-# --- 3. Main Execution: AST Stress Test ---
+# 3. Main Execution: AST Stress Test
 main:
   # Dynamic scope pollution
-  - input_list: "polluted"
-  - scalar_val: 999
-  - flag: unknown
+  input_list: "polluted"
+  scalar_val: 999
+  flag: unknown
 
   # Fuzzing 1: Passing flow-style arrays directly as arguments
-  - test_flow_args:
-    - fuzzer_func: [[1, 2, [3, 4]], 5, on]
+  test_flow_args:
+    fuzzer_func: [[1, 2, [3, 4]], 5, on]
       
-  # Fuzzing 2: Passing block-style arrays directly as arguments
-  - test_block_args:
-    - fuzzer_func:
-      - - 1
-        - 2
-        - - 3
-          - 4
-      - 10
-      - No
+  # Fuzzing 2: Block args converted to pure flow arrays
+  test_block_args:
+    fuzzer_func: [[[1, 2, [3, 4]]], 10, No]
           
-  # Fuzzing 3: Extreme operator nesting
-  - deep_evaluation_tree:
-    - std.add:
-      - std.add:
-        - std.add: [1, 2]
-        - std.add:
-          - 3
-          - 4
-      - std.add:
-        - std.mul: [5, 6]
-        - std.add: [7, 8]
+  # Fuzzing 3: Extreme operator nesting flattened via dynamic scoping
+  deep_evaluation_tree:
+    add1:
+      std.add: [1, 2]
+    add2:
+      std.add: [3, 4]
+    branch1:
+      std.add: [add1, add2]
+    mul1:
+      std.mul: [5, 6]
+    add3:
+      std.add: [7, 8]
+    branch2:
+      std.add: [mul1, add3]
+    # Final evaluation of the tree
+    std.add: [branch1, branch2]
             
   # Fuzzing 4: Coercion boundary stress
-  # What happens when we add a Base 16 string to a Decimal Falsy boundary?
-  - boundary_math:
-    - std.add: ["1F", -0.49] 
+  boundary_math:
+    std.add: ["1F", -0.49] 
         
   # Fuzzing 5: Calling a data-only subconstant as if it were a subroutine
-  - load_chaos:
-    - chaos_data: []
+  load_chaos:
+    chaos_data: []
 
   # Fuzzing 6: Re-assigning standard variables dynamically
-  - std_hijack_test:
-    - yEs: oFf
-    - bool_test: yEs
+  std_hijack_test:
+    yEs: oFf
+    bool_test: yEs
 
   # Output to confirm survival
-  - std.writeout: ["If you see this, the parser survived the fuzzer!"]
-  - yEs
+  std.writeout: ["If you see this, the parser survived the fuzzer!"]
+  final_result: yEs

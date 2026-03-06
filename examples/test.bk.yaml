@@ -1,32 +1,31 @@
 # Variables are considered subroutines. They are immutable
-# main
-- main:
+main:
   # variable called foo
-  - foo:
+  foo:
     # calling a subroutine explicitly with 0 arguments, and acquiring its value
-    - zero: []
+    zero: []
   # same thing!
-  - foo: zero
+  foo: zero
   # return value of foo
-  - foo: []
+  foo: []
+  
 # declare data, returning 10
-- data: 10
+data: 10
+
 # use zero explicitly
-- zero: []
+zero: []
+
 # use func with arguments
-- func: ['goo']
+func: ['goo']
+
 # use func with nested statements
-- func: [
+func: [
     'goo', 
-    { bar: [10, 10] },
-    bar: [5, 10],
+    bar: [10, 10], 
+    bar: [5, 10]
     ]
+
 # declare cpy2, returning data
-- cpy2: data
+cpy2: data
 
-- zero:
-  - 0
-
-- zero: 0
-
-    
+zero: 0

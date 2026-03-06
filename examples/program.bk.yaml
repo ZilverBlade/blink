@@ -17,41 +17,39 @@ str_base36: "HELLO"  # 'H', 'E', 'L', 'O' should trigger Base 36 parsing
 # --- 2. Subroutines & Dynamic Scoping ---
 # This subroutine does not declare 'multiplier', relying on the caller's scope
 scale_value:
-  - args: [base_val]
-  - std.mul: [base_val, multiplier]
+  args: [base_val]
+  std.mul: [base_val, multiplier]
 
 # --- 3. Main Execution Block ---
 main:
   # Reference copying
-  - active_flag: bool_truthy
+  active_flag: bool_truthy
   
   # Dynamic Scope Test: Setting 'multiplier' before calling 'scale_value'
-  - multiplier: 10
-  - scaled_result:
-    - scale_value: [5] # Should evaluate to 50
+  multiplier: 10
+  scaled_result:
+    scale_value: [5] # Should evaluate to 50
     
   # Type Coercion Test A: String to Integer (Base 16)
   # "1A" should parse as 26. 26 + 4 = 30.
-  - hex_addition:
-    - std.add: [str_base16, 4]
+  hex_addition:
+    std.add: [str_base16, 4]
     
   # Type Coercion Test B: Decimal to Boolean falsy boundary
   # Decimals strictly between -0.5 and 0.5 are falsy.
-  - small_dec: -0.49
-  - dec_is_falsy:
-    - std.not: [small_dec] # Should return True since -0.49 is falsy
+  small_dec: -0.49
+  dec_is_falsy:
+    std.not: [small_dec] # Should return True since -0.49 is falsy
     
   # Type Coercion Test C: Unknown to Integer
   # Unknown should coerce to 0 for math operations.
-  - unknown_math:
-    - std.add: [void_val, 100]
+  unknown_math:
+    std.add: [void_val, 100]
 
   # Output all results to verify interpreter logic
-  - std.writeout: ["--- 👁‍🗨blink Stress Test Results ---"]
-  - std.writeout: ["1. Dynamic Scope (Expected 50): %i", scaled_result]
-  - std.writeout: ["2. Hex Coercion (Expected 30): %i", hex_addition]
-  - std.writeout: ["3. Decimal Falsy Check (Expected True): %s", dec_is_falsy]
-  - std.writeout: ["4. Unknown Math (Expected 100): %i", unknown_math]
+  std.writeout: ["--- 👁‍🗨blink Stress Test Results ---"]
+  std.writeout: ["1. Dynamic Scope (Expected 50): %i", scaled_result]
+  std.writeout: ["2. Hex Coercion (Expected 30): %i", hex_addition]
+  std.writeout: ["3. Decimal Falsy Check (Expected True): %s", dec_is_falsy]
+  std.writeout: ["4. Unknown Math (Expected 100): %i", unknown_math]
   
-  # Halt gracefully
-  - True

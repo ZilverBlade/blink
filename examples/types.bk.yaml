@@ -1,33 +1,27 @@
 # Variables are considered subroutines. They are immutable
-# main
-- main:
+main:
   # variable called foo
-  - foo:
+  foo:
     # calling a subroutine explicitly with 0 arguments, and acquiring its value
-    - zero: []
+    zero: []
   # same thing!
-  - foo: zero 
+  foo: zero 
 
-- u: unknown
-- b1: True
-- b2: Yes
-- b3: On
+u: unknown
+b1: True
+b2: Yes
+b3: On
   
-- c1: false
-- c2: no
-- c3: off
+c1: false
+c2: no
+c3: off
 
-- i1: 42
-- f1: 3.1415926
-- cstr: "Hello"
-- cstr2: '10'
-- cpy: b1
-- cpy2: cpy
+i1: 42
+f1: 3.1415926
+cstr: "Hello"
+cstr2: '10'
+cpy: b1
+cpy2: cpy
 
 # subroutine that returns 0, identical as a "variable"
-- zero:
-  - 0
-# this is equivalent!
-- zero: 0
-
-    
+zero: 0
