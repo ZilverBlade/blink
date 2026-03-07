@@ -1,3 +1,9 @@
+#ifdef WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -9,8 +15,11 @@
 #define PRINT(fmt, ...) printf("%s" fmt "\n", indent, __VA_ARGS__)
 
 int main(int argc, char** argv, char** env) {
+#ifdef WIN32
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
     /* Set a file input. */
-    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/simple.bk.yaml", "rb");
+    FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test2.bk.yaml", "rb");
     bk_machine machine;
     if (bk_create_interpreter(&machine) != BK_SUCCESS) {
         printf("Failed to create blink interpreter\n");

@@ -1,0 +1,32 @@
+# 1. Base Subconstant
+value_a: 100
+
+# 2. Deep Aliasing
+# These declarations test if alias resolution leaks memory when overwritten
+pointer_1: value_a
+pointer_2: pointer_1
+pointer_3: pointer_2
+
+# 3. Dynamic Subroutine that overrides local variables
+modify_state:
+  args: [input_val]
+  # Should not leak memory when modifying existing scope!
+  value_a: input_val
+  pointer_1: 999 
+
+main:
+  # Overwrite pointer_1's alias to test memory leaks (Bug 3)
+  pointer_1: value_a 
+  
+  # Redefine a subroutine entirely to test DELETE(oldSub) (Bug 2)
+  value_a: 50
+  
+  # Pass nested subroutines to test clone ownership (Bug 1)
+  test_result:
+    modify_state: 
+      # Argument is an evaluated sub, testing dangling pointers!
+      modify_state: [pointer_3] 
+  test_result: []
+  # Ensure the engine survives and prints the dynamically scoped result
+main: []
+value_a: []
