@@ -12,8 +12,6 @@
 #include "blink.h"
 
 
-#define PRINT(fmt, ...) printf("%s" fmt "\n", indent, __VA_ARGS__)
-
 int main(int argc, char** argv, char** env) {
 #ifdef WIN32
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -25,12 +23,12 @@ int main(int argc, char** argv, char** env) {
         printf("Failed to create blink interpreter\n");
         return EXIT_FAILURE;
     }
-   
+
     bk_stream stream = {
         .pFile = input
     };
     bk_unit main;
-    if (bk_compile_translation_unit(machine, &stream, "main", & main) != BK_SUCCESS) {
+    if (bk_compile_translation_unit(machine, &stream, "main", &main) != BK_SUCCESS) {
         printf("ERROR: %s\n", bk_interpreter_get_error(machine));
         return EXIT_FAILURE;
     }

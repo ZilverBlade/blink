@@ -48,8 +48,8 @@ main:
 
   # Output all results to verify interpreter logic
   std.writeout: ["--- 👁‍🗨blink Stress Test Results ---"]
-  std.writeout: ["1. Dynamic Scope (Expected 50): %i", scaled_result]
-  std.writeout: ["2. Hex Coercion (Expected 30): %i", hex_addition]
+  std.writeout: ["1. Dynamic Scope (Expected 50): %s", scaled_result]
+  std.writeout: ["2. Hex Coercion (Expected 30): %s", hex_addition]
   std.writeout: ["3. Decimal Falsy Check (Expected True): %s", dec_is_falsy]
-  std.writeout: ["4. Unknown Math (Expected 100): %i", unknown_math]
+  std.writeout: ["4. Unknown Math (Expected 100): %s", unknown_math]
   

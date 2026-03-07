@@ -268,10 +268,6 @@ bk_string bk_interpreter_get_error(bk_machine machine) {
     return machine->lastErrorBuf;
 }
 
-bk_result bk_interpreter_attach_library(bk_machine machine, bk_voidptr library) {
-    return BK_SUCCESS;
-}
-
 bk_result bk_create_execution_engine(bk_engine* pResult) {
     *pResult = NEW(struct bk_engine_t);
     (*pResult)->ioIn = stdin;
@@ -280,6 +276,15 @@ bk_result bk_create_execution_engine(bk_engine* pResult) {
 }
 
 void bk_destroy_execution_engine(bk_engine engine) {
+    bk_internal_strhashmap_for_each(engine->state.unitStates, it) {
+        struct bk_engine_unit_state_t* unitstate = it.value;
+        bk_internal_strhashmap_for_each(unitstate->subs, it2) {
+            bk_internal_destroy_sub(it2.value); // struct bk_sub_t
+        }
+        DELETE(unitstate->currentValue);
+        DELETE(unitstate);
+    }
+    bk_internal_free_strhashmap(engine->state.unitStates);
     DELETE(engine->state.lastErrorBuf);
     DELETE(engine);
 }
@@ -327,6 +332,11 @@ bk_result bk_engine_create_object(bk_engine engine, bk_metadata metadata, bk_voi
 
 bk_string bk_engine_get_error(bk_engine engine) {
     return engine->state.lastErrorBuf;
+}
+
+bk_result bk_engine_attach_library(bk_engine engine, bk_voidptr library) {
+
+    return BK_SUCCESS;
 }
 
 bk_result bk_compile_translation_unit(bk_machine machine, bk_stream* pStream, bk_string name, bk_unit* pResult) {

@@ -8,7 +8,21 @@ extern "C" {
 #include <stdint.h>
 #include <stdio.h>
 
-#define BK_API
+#if defined(_WIN32) && !defined(__MINGW32__)
+#define BK_API_EXPORT  __declspec(dllexport)
+#else
+#define BK_API_EXPORT  
+#endif
+
+#if defined(blink_EXPORTS)
+#define BK_API BK_API_EXPORT
+#else
+#if defined(_WIN32) && !defined(__MINGW32__)
+#define BK_API  __declspec(dllimport)
+#else
+#define BK_API  
+#endif
+#endif
 
     typedef int bk_boolean;
 #define BK_TRUE 1
@@ -50,7 +64,6 @@ extern "C" {
         BK_TYPE_STRING = 's',
     } bk_type;
 
-
     typedef enum bk_exception_t {
         BK_EX_NONE = 0,
         BK_EX_ENGINE_FAILURE = -0x7FFFFFFF,
@@ -74,6 +87,34 @@ extern "C" {
     typedef struct bk_engine_t* bk_engine;
     typedef struct bk_unit_t* bk_unit;
     typedef struct bk_metadata_t* bk_metadata;
+    typedef struct bk_managed_value_t* bk_managed_value;
+
+    typedef bk_result(*bk_native_func)(bk_libctx* ctx, bk_integer argc, bk_managed_value* argv, bk_managed_value* pReturn);
+
+    typedef void(*PFN_bk_engine_throw_exception)(bk_engine engine, bk_exception code, bk_string msg, bk_integer argc, bk_integer* argv);
+    typedef bk_result(*PFN_bk_engine_get_io)(bk_engine engine, FILE** pInput, FILE** pOutput);
+    typedef bk_result(*PFN_bk_engine_create_object)(bk_engine engine, bk_metadata metadata, bk_voidptr data, bk_object* pResult);
+    typedef bk_result(*PFN_bk_box_managed_value)(bk_voidptr value, bk_type target, bk_voidptr* pResult);
+    typedef bk_result(*PFN_bk_managed_value_coerce)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
+    typedef bk_result(*PFN_bk_managed_value_get_type)(bk_managed_value value, bk_type* pType);
+    typedef bk_result(*PFN_bk_managed_value_unbox)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
+    typedef bk_result(*PFN_bk_managed_value_clone)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
+    typedef bk_result(*PFN_bk_release_void_data)(bk_voidptr data);
+
+    typedef struct bk_libctx_t {
+        bk_engine engine;
+        bk_unit unit;
+        PFN_bk_engine_throw_exception engine_throw_exception;
+        PFN_bk_engine_get_io engine_get_io;
+        PFN_bk_engine_create_object engine_create_object;
+        PFN_bk_managed_value_get_type managed_value_get_type;
+        PFN_bk_managed_value_coerce managed_value_coerce;
+        PFN_bk_box_managed_value box_managed_value;
+        PFN_bk_managed_value_unbox managed_value_unbox;
+        PFN_bk_managed_value_clone managed_value_clone;
+        PFN_bk_release_void_data release_void_data;
+    } bk_libctx;
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

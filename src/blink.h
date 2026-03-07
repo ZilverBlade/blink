@@ -14,8 +14,6 @@ extern "C" {
 
     BK_API bk_string bk_interpreter_get_error(bk_machine machine);
 
-    BK_API bk_result bk_interpreter_attach_library(bk_machine machine, bk_voidptr library);
-
     BK_API bk_result bk_create_execution_engine(bk_engine* pResult);
     BK_API void bk_destroy_execution_engine(bk_engine engine);
 
@@ -25,6 +23,7 @@ extern "C" {
     BK_API void bk_engine_throw_exception(bk_engine engine, bk_exception code, bk_string msg, bk_integer argc, bk_integer* argv);
     BK_API bk_result bk_engine_create_object(bk_engine engine, bk_metadata metadata, bk_voidptr data, bk_object* pResult);
     BK_API bk_string bk_engine_get_error(bk_engine engine);
+    BK_API bk_result bk_engine_attach_library(bk_engine engine, bk_voidptr library);
 
     BK_API bk_result bk_compile_translation_unit(bk_machine machine,  bk_stream* pStream, bk_string name, bk_unit* pResult);
     BK_API bk_result bk_emit_translation_unit(bk_unit unit, char* outBuf, bk_integer* pBufLen);

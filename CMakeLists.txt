@@ -2,11 +2,9 @@ cmake_minimum_required(VERSION 3.28)
 
 add_subdirectory(extern)
 
-
-add_executable(blink
-   src/main.c
+add_library(blink SHARED
    src/blink.c
-   "src/internal/strhashmap.c"
+   src/internal/strhashmap.c
    src/internal/yaml/api.c
    src/internal/yaml/dumper.c
    src/internal/yaml/emitter.c
@@ -20,4 +18,10 @@ add_executable(blink
 add_library(bkstd SHARED
    src/std/bkstdlib.c
 )
+
+add_executable(blinkcli
+   src/main.c
+)
+
+target_link_libraries(blinkcli blink)
 
