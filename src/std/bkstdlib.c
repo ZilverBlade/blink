@@ -12,9 +12,7 @@ static int IsNotADecimal(bk_decimal num) {
 }
 
 static bk_result get_decimal_arg(bk_libctx* ctx, bk_managed_value val, bk_decimal* out_val, bk_integer arg_idx) {
-    bk_voidptr pResult = out_val;
-
-    if (ctx->managed_value_coerce(val, BK_TYPE_DECIMAL, &pResult) != BK_SUCCESS) {
+    if (!ctx->managed_value_coerce(val, BK_TYPE_DECIMAL, out_val)) {
         ctx->engine_throw_exception(ctx->engine, BK_EX_OBJECTCONVERSION, "Failed to coerce argument", 1, &arg_idx);
         return BK_ENGINE_EXCEPTION;
     }
@@ -163,27 +161,29 @@ static struct subs_t {
     {.szName = "writeout", .pfnSub = bkstdlib_writeout },
 };
 
-BK_API_EXPORT bk_result bkunknownlib_export(
-    bk_string* pLibName, bk_integer* pSubCount,
-    bk_string** ppSubNames, bk_voidptr** ppSubFptrs) {
+static bk_string* s_pSubNames = NULL;
+static bk_string* s_pSubFptrs = NULL;
 
-    *pLibName = "bkstdlib"; // Provide the library name
+BK_API_EXPORT bk_result bk_unknownlib_export(
+    bk_string* pLibName, bk_integer* pSubCount,
+    bk_string** ppSubNames, bk_native_func** ppSubFptrs) {
+
+    *pLibName = "std"; // Provide the library name
     *pSubCount = sizeof(subs) / sizeof(struct subs_t);
 
-    *ppSubNames = malloc(sizeof(bk_string) * *pSubCount);
-    *ppSubFptrs = malloc(sizeof(bk_voidptr) * *pSubCount);
+    s_pSubNames = malloc(sizeof(bk_string) * *pSubCount);
+    s_pSubFptrs = malloc(sizeof(bk_native_func) * *pSubCount);
+
+    *ppSubNames = s_pSubNames;
+    *ppSubFptrs = s_pSubFptrs;
 
     for (bk_integer i = 0; i < *pSubCount; ++i) {
         (*ppSubNames)[i] = subs[i].szName;
-        (*ppSubFptrs)[i] = (bk_voidptr)subs[i].pfnSub;
+        (*ppSubFptrs)[i] = subs[i].pfnSub;
     }
     return BK_SUCCESS;
 }
-
-BK_API_EXPORT bk_result bkunknownlib_cleanup(
-    bk_string* pSubNames, bk_voidptr* pSubFptrs, bk_string* pSubSigs) {
-    free(pSubNames);
-    free(pSubFptrs);
-    free(pSubSigs);
-    return BK_SUCCESS;
+BK_API_EXPORT void bk_unknownlib_cleanup() {
+    free(s_pSubNames);
+    free(s_pSubFptrs);
 }

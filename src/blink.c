@@ -222,7 +222,12 @@ struct bk_machine_t {
     bk_integer lastErrorMaxBufLen;
 };
 
+struct bk_lib_t {
+    bk_strhashmap funcs; // struct bk_native_func
+};
+
 struct bk_engine_unit_state_t {
+    bk_strhashmap libs; // struct bk_lib_t
     bk_strhashmap subs; // struct bk_sub_t
     struct bk_managed_value_t* currentValue;
 };
@@ -241,6 +246,28 @@ struct bk_unit_t {
     bk_string name;
     struct bk_dynamic_list_t* tokens;
 };
+
+static bk_library s_StandardLibrary = NULL;
+
+bk_result bk_initialize() {
+#if defined(WIN32)
+    bk_string LIBRARY = "bkstd.dll";
+#elif defined (__APPLE__)
+    bk_string LIBRARY = "libbkstd.dylib";
+#elif defined(__linux__)
+    bk_string LIBRARY = "libbkstd.so";
+#else
+#error Library not defined
+#endif
+    if (bk_load_library_from_path(LIBRARY, &s_StandardLibrary) != BK_SUCCESS) {
+        return BK_INIT_FAILURE;
+    }
+}
+void bk_terminate() {
+    bk_free_library(s_StandardLibrary);
+    s_StandardLibrary = NULL;
+}
+
 
 bk_result bk_create_interpreter(bk_machine* pResult) {
     yaml_parser_t parser;
@@ -289,6 +316,91 @@ void bk_destroy_execution_engine(bk_engine engine) {
     DELETE(engine);
 }
 
+struct bk_library_vtable_t {
+    bk_result(*load_library)(bk_string, bk_voidptr*);
+    bk_result(*free_library)(bk_voidptr);
+    bk_voidptr(*get_proc_address)(bk_voidptr, bk_string);
+};
+
+#if defined(WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#define DELETE(x) free((x))
+static bk_result _bk_load_library(bk_string path, bk_voidptr* pResult) {
+    HMODULE result = LoadLibraryA(path);
+    if (!result) {
+        *pResult = NULL;
+        return BK_INIT_FAILURE;
+    }
+    *pResult = (bk_voidptr)result;
+    return BK_SUCCESS;
+}
+static void _bk_free_library(bk_voidptr handle) {
+    FreeLibrary(handle);
+}
+static bk_voidptr _bk_get_proc_address(bk_voidptr handle, bk_string def) {
+    return (bk_voidptr)GetProcAddress(handle, def);
+}
+static struct bk_library_vtable_t LIBRARY_VTABLE = {
+    .load_library = _bk_load_library,
+    .free_library = _bk_free_library,
+    .get_proc_address = _bk_get_proc_address,
+};
+#elif defined(__linux__) 
+#error TODO: add load library in linux
+#endif
+
+typedef struct bk_library_t {
+    bk_voidptr handle;
+    struct bk_library_vtable_t* vfptr;
+    bk_strhashmap funcs; // bk_native_func
+    PFN_bk_unknownlib_export fn_export;
+    PFN_bk_unknownlib_cleanup fn_cleanup;
+    bk_string name;
+} *bk_library;
+
+bk_result bk_load_library_from_path(bk_string path, bk_library* pResult) {
+    if (!pResult) {
+        return BK_NULL_FAILURE;
+    }
+    *pResult = NEW(struct bk_library_t);
+    (*pResult)->vfptr = &LIBRARY_VTABLE;
+    bk_result res = (*pResult)->vfptr->load_library(path, &(*pResult)->handle);
+    if (res != BK_SUCCESS) {
+        return res;
+    }
+    (*pResult)->fn_export = (*pResult)->vfptr->get_proc_address((*pResult)->handle, "bk_unknownlib_export");
+
+    if (!(*pResult)->fn_export) {
+        bk_free_library(*pResult);
+        return BK_LIBRARY_FAILURE;
+    }
+    (*pResult)->fn_cleanup = (*pResult)->vfptr->get_proc_address((*pResult)->handle, "bk_unknownlib_cleanup");
+
+    bk_integer numSubs;
+    bk_string* funcNames;
+    bk_native_func* funcPtrs;
+    (*pResult)->fn_export(&(*pResult)->name, &numSubs, &funcNames, &funcPtrs);
+
+    (*pResult)->funcs = bk_internal_create_strhashmap();
+    for (bk_integer i = 0; i < numSubs; ++i) {
+        bk_internal_strhashmap_put((*pResult)->funcs, funcNames[i], funcPtrs[i]);
+    }
+    return BK_SUCCESS;
+}
+
+void bk_free_library(bk_library library) {
+    if (library) {
+        if (library->fn_cleanup) {
+            library->fn_cleanup();
+        }
+        library->vfptr->free_library(library->handle);
+        DELETE(library->funcs);
+    }
+    DELETE(library);
+}
+
 bk_result bk_engine_set_io(bk_engine engine, FILE* input, FILE* output) {
     if (engine == NULL) return BK_NULL_FAILURE;
     engine->ioIn = input;
@@ -334,7 +446,7 @@ bk_string bk_engine_get_error(bk_engine engine) {
     return engine->state.lastErrorBuf;
 }
 
-bk_result bk_engine_attach_library(bk_engine engine, bk_voidptr library) {
+bk_result bk_engine_attach_library(bk_engine engine, bk_library library) {
 
     return BK_SUCCESS;
 }
@@ -776,9 +888,7 @@ static bk_result bk_consume_sub(bk_engine engine, struct bk_engine_unit_state_t*
             }
             UPDATE_D();
             if (strcmp(token->data.sub.name, BK_KEYWORD_IMPORT) == 0) {
-                result = BK_ENGINE_NOT_IMPLEMENTED;
-                goto error;
-                //bk_find_imports(engine, unitState, unit, pTokenIdx);
+                //bk_load_imports(engine, unitState, unit, pTokenIdx);
                 //currSub->currentValue = bk_internal_box_managed_value(NULL, 0, BK_TYPE_UNKNOWN);
             }
             else if (strcmp(token->data.sub.name, BK_KEYWORD_ARGS) == 0) {

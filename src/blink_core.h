@@ -40,6 +40,7 @@ extern "C" {
 
         BK_INIT_FAILURE,
         BK_NULL_FAILURE,
+        BK_LIBRARY_FAILURE,
 
         BK_IO_ERROR,
         BK_PARSER_ERROR,
@@ -88,18 +89,17 @@ extern "C" {
     typedef struct bk_unit_t* bk_unit;
     typedef struct bk_metadata_t* bk_metadata;
     typedef struct bk_managed_value_t* bk_managed_value;
+    typedef struct bk_library_t* bk_library;
 
-    typedef bk_result(*bk_native_func)(bk_libctx* ctx, bk_integer argc, bk_managed_value* argv, bk_managed_value* pReturn);
-
-    typedef void(*PFN_bk_engine_throw_exception)(bk_engine engine, bk_exception code, bk_string msg, bk_integer argc, bk_integer* argv);
     typedef bk_result(*PFN_bk_engine_get_io)(bk_engine engine, FILE** pInput, FILE** pOutput);
-    typedef bk_result(*PFN_bk_engine_create_object)(bk_engine engine, bk_metadata metadata, bk_voidptr data, bk_object* pResult);
-    typedef bk_result(*PFN_bk_box_managed_value)(bk_voidptr value, bk_type target, bk_voidptr* pResult);
-    typedef bk_result(*PFN_bk_managed_value_coerce)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
-    typedef bk_result(*PFN_bk_managed_value_get_type)(bk_managed_value value, bk_type* pType);
-    typedef bk_result(*PFN_bk_managed_value_unbox)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
-    typedef bk_result(*PFN_bk_managed_value_clone)(bk_managed_value value, bk_type target, bk_voidptr* pResult);
-    typedef bk_result(*PFN_bk_release_void_data)(bk_voidptr data);
+    typedef void(*PFN_bk_engine_throw_exception)(bk_engine engine, bk_exception code, bk_string msg, bk_integer argc, bk_integer* argv);
+    typedef bk_object(*PFN_bk_engine_create_object)(bk_engine engine, bk_metadata metadata, bk_voidptr data);
+    typedef bk_voidptr(*PFN_bk_box_managed_value)(bk_voidptr value, bk_integer size, bk_type target);
+    typedef bk_boolean(*PFN_bk_managed_value_coerce)(bk_managed_value value, bk_type target, bk_voidptr outData);
+    typedef bk_type(*PFN_bk_managed_value_get_type)(bk_managed_value value);
+    typedef bk_voidptr(*PFN_bk_managed_value_unbox)(bk_managed_value value, bk_type target);
+    typedef bk_voidptr(*PFN_bk_managed_value_clone)(bk_managed_value value, bk_type target);
+    typedef void(*PFN_bk_release_void_data)(bk_voidptr data);
 
     typedef struct bk_libctx_t {
         bk_engine engine;
@@ -115,6 +115,10 @@ extern "C" {
         PFN_bk_release_void_data release_void_data;
     } bk_libctx;
 
+    typedef bk_result(*bk_native_func)(bk_libctx* ctx, bk_integer argc, bk_managed_value* argv, bk_managed_value* pReturn);
+    typedef bk_result(*PFN_bk_unknownlib_export)(bk_string* pLibName, bk_integer* pSubCount, bk_string** ppSubNames, bk_native_func** ppSubFptrs);
+    typedef void(*PFN_bk_unknownlib_cleanup)();
+ 
 #ifdef __cplusplus
 }
 #endif // __cplusplus

@@ -16,6 +16,10 @@ int main(int argc, char** argv, char** env) {
 #ifdef WIN32
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
+    if (bk_initialize() != BK_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+
     /* Set a file input. */
     FILE* input = fopen("D:/Directories/Documents/VisualStudio2019/Projects/blink/examples/test2.bk.yaml", "rb");
     bk_machine machine;
@@ -58,6 +62,8 @@ int main(int argc, char** argv, char** env) {
     bk_destroy_execution_engine(engine);
     bk_release_translation_unit(main);
     bk_destroy_interpreter(machine);
+
+    bk_terminate();
 
     fclose(input);
 
